@@ -1,3 +1,5 @@
+export const SESSION_DURATION_LIMITS = { min: 60, max: 180 } as const;
+
 export interface WeaponCooldowns {
   primary: number;
   secondary: number;

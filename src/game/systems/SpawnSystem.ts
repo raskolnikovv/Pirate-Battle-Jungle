@@ -32,7 +32,7 @@ export class SpawnSystem {
   }
 
   update(state: GameState, deltaSeconds: number): void {
-    if (!state.isRunning) return;
+    if (state.status !== 'running') return;
     this.remainingSeconds -= deltaSeconds;
     if (this.remainingSeconds > 1e-9) return;
     // One bounded attempt per interval; no backlog of spawns after a large update.

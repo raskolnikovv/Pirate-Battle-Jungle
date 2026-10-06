@@ -10,15 +10,15 @@ A arquitetura planejada separa a interface e navegação React da simulação e 
 
 Já existem telas de menu, opções, jogo, resultado, ranking e histórico; navegação local entre elas; endpoints e respostas simuladas para ranking, histórico e envio de partida; e um teste E2E básico. `GameCanvas` inicializa e destrói uma aplicação PixiJS, e `GameLoop` tem uma estrutura de timestep fixo.
 
-A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← e D/→. Space dispara pela proa; Q/E lançam três balas paralelas. Chaser e Shooter surgem periodicamente em posições validadas, com distribuição configurável e aleatoriedade reproduzível por seed. Chaser persegue e causa contato; Shooter para no alcance e dispara. Pontuação, barras de vida, fim de partida, sons e integração de gameplay com API continuam pendentes.
+A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← e D/→. Space dispara pela proa; Q/E lançam três balas paralelas. Chaser e Shooter surgem periodicamente com seed e posições validadas. A partida usa countdown da simulação, padrão 120 s; ao expirar, congela o gameplay e mantém a arena visível. Pontuação, barras de vida, término por morte, transição automática para resultado, pausa, sons e integração de gameplay com API continuam pendentes.
 
 ## 2. Como a arquitetura funciona
 
 - **React:** monta o aplicativo e apresenta telas, navegação e controles de interface. Em `App`, a tela atual é escolhida por estado local. React guarda o status de loading do canvas, mas não recebe as coordenadas contínuas da partida.
 - **PixiJS:** `GameCanvas` inicializa uma `Application` com coordenadas lógicas 960 × 600 e resolução do dispositivo; o canvas é escalado via CSS mantendo proporção. O ticker automático do Pixi fica desligado para usar o loop do jogo.
-- **Game:** cria nave/ilha e mapa de inimigos vazio, copia a configuração (incluindo pesos) e cria um SpawnSystem novo por partida. Coordena input, loop, spawn, movimento, combate, colisão e renderer.
+- **Game:** valida duração 60–180 s, copia config e cria estado/SpawnSystem novos. Atualiza countdown e coordena sistemas somente com status running; ao terminar, remove input e mantém renderização do estado congelado.
 - **GameLoop:** usa `requestAnimationFrame`, acumula tempo e chama `update` em passos fixos de 1/60 s; limita delta longo a 250 ms. Chama render em cada frame e calcula `alpha`, ainda não usado para interpolação.
-- **GameState:** guarda jogador, ilhas, mapas de inimigos/projéteis, cooldowns e contador de IDs. Vida, velocidades e colliders são dados lógicos; nenhum objeto Pixi fica no estado.
+- **GameState:** guarda entidades, cooldowns, IDs, duração, remainingSeconds, elapsedSeconds, status running/finished e finishReason. Esses dados são autoritativos; nenhum objeto Pixi fica no estado. O antigo boolean isRunning foi substituído pelo status.
 - **GameRenderer:** repete água, compõe ilhas e desenha jogador, Chaser, Shooter e balas de ambas as equipes. Mapas por ID reutilizam sprites e destroem os removidos. Não calcula IA, colisão nem dano. Debug opcional desenha os colliders amarelos dos inimigos.
 - **InputManager:** captura W/↑, A/←, D/→, Space, Q e E enquanto a partida está montada; devolve um snapshot para a simulação. Previne o comportamento padrão dessas teclas e remove listeners/reseta o input ao destruir.
 - **Sistemas de gameplay:** `MovementSystem` move navios/balas; `CollisionSystem` detecta impactos; `CombatSystem` aplica dano/armas. `SpawnSystem` controla countdown, PRNG e IDs, valida posições e chama factories. Não contém IA.
@@ -30,7 +30,7 @@ A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← 
 
 **Fluxo existente da interface:** `main.tsx` inicia MSW em desenvolvimento e monta `App` dentro de `StrictMode` e `ReactQueryProvider`. `App` escolhe a tela. Ranking e histórico usam hooks TanStack Query → endpoints Axios → handlers MSW no ambiente de desenvolvimento.
 
-**Fluxo da partida:** `GameCanvas` carrega texturas e liga Pixi/renderer/jogo. Cada update fixo é subdividido quando necessário: movimento/IA → ilha → armas do jogador → impactos → armas dos Shooters → contato → spawn. Balas inimigas e inimigos novos iniciam movimento no próximo subpasso. `Game` coordena; sistemas alteram dados e renderer desenha. Coordenadas, vida, cooldowns e spawns não passam pelo estado React.
+**Fluxo da partida:** `GameCanvas` carrega texturas e liga Pixi/renderer/jogo. Game verifica lifecycle e limita delta ao tempo disponível. Cada subpasso executa movimento/IA → ilha → armas → impactos → Shooter → contato → spawn, então reduz o countdown e detecta time-up. Depois de finished, update retorna antes dos sistemas e render continua. React não decrementa nem recebe o timer por frame.
 
 ## 3. Decisões técnicas
 
@@ -175,6 +175,16 @@ Registro da decisão do marco #4. No marco #5, o teste foi ampliado para retorna
 **Alternativas possíveis:** Math.random dificulta replay; escolher de uma lista fixa de pontos é simples, mas limita variedade. Um mapa espacial aumentaria a complexidade sem necessidade nesta arena.
 
 **Como eu explicaria isso em uma entrevista:** “Uso uma seed para gerar escolhas reproduzíveis. Antes de criar o inimigo, verifico geometria e distância; se todas as tentativas falham, aguardo o próximo intervalo.”
+
+### Countdown autoritativo e encerramento central
+
+**O que foi decidido:** manter duração/tempo/status em GameState, usar delta da simulação e interromper todos os sistemas pelo guard central de Game.update. Renderização continua mostrando o estado final.
+
+**Por que fizemos assim:** evita relógios concorrentes e checks de fim espalhados por IA, movimento e combate. O mesmo bloqueio poderá suspender o timer numa futura pausa. GameState já é a fonte das regras locais.
+
+**Alternativas possíveis:** setInterval/Date.now ou timer React. Exigiriam sincronizar o relógio com a simulação, pausa e lifecycle; não foram usados.
+
+**Como eu explicaria isso em uma entrevista:** “O timer avança junto do jogo pelo delta. Ao chegar a zero, o Game marca finished e deixa de chamar os sistemas, mantendo o renderer desenhando a última cena.”
 
 ## 4. Diário de implementação
 
@@ -604,7 +614,62 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 
 **Validação realizada:** typecheck, build e lint passaram usando npm-cli instalado, devido ao launcher npm quebrado do ambiente. Aviso preexistente de chunk > 500 kB permanece: principal 988,54 kB minificado. Verificações temporárias de código, sem arquivos de teste adicionados, passaram para repetição de tipos/posições com mesma seed, mudança com seed diferente, 200 spawns por execução em timestep fixo, raio/distância/ilha/bordas, rejeição de inimigo vivo, intervalo inicial, pesos 1/0 e 0/1, limite exato de 20 tentativas, pular e tentar no próximo intervalo, estado parado, snapshot dos pesos e reset do Game/IDs/PRNG. Também passou intervalo fracionário de 0,025 s com deltas de 0,01 s (40 oportunidades em 1 s). Não foram criados/executados E2E, nem realizado gameplay no navegador.
 
+### Etapa 11 — Marco #7, parte 1: timer e término por tempo
+
+**Status:** Concluído.
+
+**Responsável pela implementação:** Colaborativo. Arquitetura do timer, tempo da simulação e escopo de encerramento foram decididos colaborativamente; Codex implementou o código.
+
+**O que foi implementado:** duração validada de 60 a 180 s, countdown com delta, time-up único e congelamento de toda simulação. Sem pontuação, derrota por vida zero, navegação automática de resultado, HUD, pausa ou API.
+
+**Arquivos principais envolvidos:** `src/config/gameConfig.ts`, `src/game/core/GameState.ts`, `Game.ts`, `src/game/systems/SpawnSystem.ts` e este diário. Nenhum arquivo novo. GameLoop, GameCanvas, telas, IA, combate e renderer foram inspecionados e preservados.
+
+**Como funciona:**
+
+- Usa o campo existente `GameConfig.sessionDuration`, padrão 120. `SESSION_DURATION_LIMITS` centraliza min=60 e max=180 para validação no start e futura UI. Valores não finitos ou fora da faixa são rejeitados. Options atual não possui duração funcional nem persistência; não foi criada outra configuração.
+- Estado nasce com durationSeconds e remainingSeconds iguais ao snapshot, elapsedSeconds=0, status=running e finishReason=null. Tipos de motivos existentes permitem expansão futura, mas só time_expired é disparado neste marco.
+- Game.update verifica status antes de qualquer input/sistema. Limita delta ao remainingSeconds, evitando mover além do fim num update que exceda o tempo restante. Cada subpasso usa só o tempo disponível, executa gameplay e depois faz remaining = max(0, remaining - delta).
+- Não arredonda countdown por frame. Remove somente resíduo decimal até 1e-9 s próximo de zero, para não atrasar um tick por erro de ponto flutuante. elapsedSeconds é derivado de duração menos restante; ao terminar fica exatamente igual à duração.
+- Ao remaining <= 0, finishMatch marca finished/time_expired e desanexa/reset input. O método e o update têm guard de status, impedindo repetir a transição. Atualizações posteriores não alteram posições, HP, projéteis, cooldowns, IDs, PRNG nem countdown de spawn.
+- Os sistemas processam o último período ativo antes da transição. Um evento/spawn ocorrido nesse período pode fazer parte da cena final; nada é processado depois de finished. O renderer não limpa entidades no fim: mantém a última cena e GameLoop continua renderizando.
+- SpawnSystem reutiliza o novo status em seu guard existente, sem timer de duração próprio. Game não o chama após o fim. Futuro pause deverá bloquear updates sem correção por relógio externo; isso congelará tempo e sistemas juntos. Pause ainda não existe.
+- Start após finished reinicia o loop sem duplicação e recria estado/SpawnSystem: duração cheia, status running, motivo null, mapas limpos e sequência de spawn resetada. Sair/reabrir a tela também continua usando o cleanup existente.
+
+**Por que foi feito dessa forma:** Game concentra lifecycle e coordenação. Tempo é parte da simulação, independente da quantidade de renders. Limitar o último delta preserva movimento proporcional ao tempo válido. Manter o renderer ativo conserva a cena final sem misturar término com destruição de recursos.
+
+**Como o timer chegará ao HUD depois:** hoje somente `Game.getState()`/debugger expõem os dados; não há callback conectado nem React state de countdown. Em uma etapa futura, Game pode emitir snapshot com segundo apresentado, score, HP e status apenas quando mudarem, passando por GameCanvas à tela. React formatará o tempo (por exemplo ceil/segundos), sem diminuir o valor nem renderizar a 60 Hz. O desenho desse mecanismo é uma recomendação, não integração já implementada.
+
+**O que eu preciso entender:** implementação realizada pelo Codex neste marco colaborativo. Revisar tempo de simulação versus relógio real, deltas/subpassos, resíduo de ponto flutuante, estado autoritativo, último delta parcial, guard de lifecycle e diferença entre congelar regras e parar renderização.
+
+**Como testar manualmente:**
+
+1. Start Game com config padrão. DevTools/Sources: breakpoint no fim de createInitialState; inspecionar duração 120, restante 120, status running e motivo null.
+2. Para observar countdown, breakpoint na atribuição de remainingSeconds em Game.update: restante cai pelo delta do subpasso; elapsed é duração menos restante. HUD Time permanece -- porque não foi integrado.
+3. Para teste rápido sem violar faixa de produção, pause dentro de Game.update e ajuste somente o estado pelo debugger: `this.state.remainingSeconds = 2; this.state.elapsedSeconds = this.state.durationSeconds - 2`. Continue e jogue: após cerca de 2 s simulados a arena deve congelar. A configuração da partida permanece válida.
+4. Breakpoint em finishMatch: verificar remaining=0, status finished e finishReason=time_expired. Segurar W/A/D/Space/Q/E depois disso não deve mover, disparar, aplicar dano ou gerar novos inimigos; esperar vários intervalos de spawn e conferir cena congelada.
+5. Sair pelo botão existente e iniciar novamente: tempo volta a 120, sem inimigos/balas antigos; primeiro spawn após 3 s. O botão Quit mantém seu comportamento anterior de navegação; time-up não navega automaticamente.
+6. Com snapshots válidos de 60 e 180 s em desenvolvimento, confirmar os dois limites. Para estudar precisão, os checks de código executam todos os ticks aceleradamente, sem esperar minutos no navegador. Não foi exposta duração curta na UI.
+7. Vida zero deve continuar permitindo gameplay até expirar o tempo, pois derrota ainda não foi implementada. Redimensionamento mantém a cena; blur apenas reseta input, sem pausa automática nesta etapa.
+
+**Limitações:** sem timer visível real, mensagem de término, resultado automático, derrota ou pause. O loop continua renderizando a cena congelada; isso mantém uso de RAF até sair. O GameLoop existente limita atrasos a 250 ms e não recupera todo tempo de aba suspensa, portanto segundos simulados podem divergir do relógio de parede. A tolerância final trata erro numérico inferior a um nanossegundo; não é arredondamento da apresentação. Testes com renderer substituído não garantem Pixi/lifecycle no navegador.
+
+**Possíveis perguntas de entrevista:**
+
+- Por que não usa setInterval? “O tempo deve avançar junto da simulação; timer separado exigiria sincronização com pausa e fim.”
+- Onde está o estado autoritativo? “Em GameState. React poderá mostrar uma cópia formatada, sem controlar a contagem.”
+- Como não depende do FPS? “Desconto o delta dos updates fixos, não a quantidade de desenhos.”
+- O que acontece em zero? “Limito a zero, marco finished/time_expired e bloqueio sistemas pelo Game.”
+- Como impede spawn após o fim? “O guard central não chama SpawnSystem; seu countdown e PRNG ficam parados.”
+- Por que React não controla countdown? “Ele controla telas; tempo e regras contínuas precisam compartilhar o relógio da simulação.”
+- Como isso facilita pausa? “Basta suspender updates: countdown, armas e spawns param juntos, sem timers externos.”
+
+**Validação realizada:** typecheck, build e lint passaram pelo npm-cli instalado; launcher npm quebrado é condição preexistente. Aviso de chunk > 500 kB permanece: principal 989,58 kB minificado. Verificações temporárias, sem arquivos de teste adicionados, passaram para desconto por delta, snapshot da duração, validação 60–180, último passo limitado a 0,005 s, zero exato, transição única, freeze completo do estado e internos do spawn após 600 updates, render recebendo estado final, reset no start após finished, deadlines em 3600/7200/10800 ticks e ausência de término por vida zero. Renderer/RAF foram substituídos nesses checks; nenhum gameplay de navegador ou E2E foi executado.
+
 ## 5. Conceitos importantes para estudar
+
+- **Tempo simulado vs. relógio real:** tempo do jogo é soma dos deltas executados; relógio de parede continua passando mesmo sem updates. O loop pode limitar atrasos.
+- **Estado autoritativo e lifecycle:** GameState decide tempo/status reais; running permite regras e finished impede avanço. Renderizar não significa simular.
+- **Precisão temporal:** manter frações de segundo e limitar o último delta evita perder precisão; arredondamento deve ficar na apresentação futura.
 
 - **Pseudoaleatoriedade e seed:** algoritmo determinístico que parece aleatório; seed define estado inicial. Repetir seed e chamadas repete valores.
 - **Escolha ponderada:** probabilidade é peso dividido pela soma; 60/40 equivale a 0,6/0,4, mas não exige quota exata por partida.
@@ -645,6 +710,10 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 
 ## 6. Perguntas que eu deveria conseguir responder
 
+- **Quem controla o timer?** “Game reduz o tempo no GameState usando delta; React não executa countdown.”
+- **O que congela após o fim?** “Todos os sistemas deixam de ser chamados: movimento, armas, projéteis, dano, cooldowns e spawn.”
+- **Como impede término duplicado?** “O update e finishMatch verificam se o status ainda é running.”
+
 - **Como reproduzir os spawns?** “Uso a mesma seed, configuração, estado inicial, deltas e inputs; comparo IDs, tipos e posições.”
 - **Quem cria os inimigos e quem controla a IA?** “SpawnSystem valida posições e chama factories; MovementSystem e CombatSystem controlam comportamento.”
 - **O que acontece sem espaço livre?** “Após o máximo de tentativas, pulo a criação e aguardo o próximo intervalo.”
@@ -673,6 +742,8 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 - **O que os testes automatizados garantem hoje?** “A abertura do menu e alguns caminhos de navegação. Não garantem que o jogo seja jogável.”
 
 ## 7. Pontos que ainda não domino
+
+- **Timer implementado pelo Codex em colaboração:** revisar delta parcial final, precisão de ponto flutuante, guard central e reset do loop após finished. Saber explicar por que o HUD ainda não mostra o timer e qual seria a sincronização futura.
 
 - **Spawn implementado pelo Codex em colaboração:** estudar LCG, Math.imul, conversão unsigned, distribuição ponderada e por que o consumo aleatório muda ao rejeitar uma posição. Revisar timer da simulação e reset por partida.
 

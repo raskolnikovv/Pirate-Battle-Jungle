@@ -1,5 +1,5 @@
 import type { GameConfig } from '@/config/gameConfig';
-import type { Enemy, Player, Projectile } from '@/types/domain';
+import type { Enemy, MatchEndReason, Player, Projectile } from '@/types/domain';
 import type { Island } from '../entities/Island';
 
 export interface GameState {
@@ -11,7 +11,10 @@ export interface GameState {
   nextProjectileId: number;
   score: number;
   elapsedSeconds: number;
-  isRunning: boolean;
+  durationSeconds: number;
+  remainingSeconds: number;
+  status: 'running' | 'finished';
+  finishReason: MatchEndReason | null;
 }
 
 export interface GameCallbacks {

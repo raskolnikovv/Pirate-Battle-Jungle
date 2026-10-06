@@ -1,4 +1,5 @@
-import { DEFAULT_GAME_CONFIG, type GameConfig } from '@/config/gameConfig';
+import { DEFAULT_GAME_CONFIG, SESSION_DURATION_LIMITS, type GameConfig } from '@/config/gameConfig';
+import type { MatchEndReason } from '@/types/domain';
 import { createPlayer } from '../entities/Player';
 import { createIsland } from '../entities/Island';
 import { InputManager } from '../input/InputManager';
@@ -44,8 +45,14 @@ export class Game {
   }
 
   start(config: GameConfig = DEFAULT_GAME_CONFIG): void {
-    if (this.loop.isRunning()) return;
+    if (this.loop.isRunning() && this.state?.status === 'running') return;
+    if (!Number.isFinite(config.sessionDuration)
+      || config.sessionDuration < SESSION_DURATION_LIMITS.min
+      || config.sessionDuration > SESSION_DURATION_LIMITS.max) {
+      throw new Error('Game session duration must be between 60 and 180 seconds.');
+    }
 
+    this.loop.stop();
     this.configSnapshot = copyConfig(config);
     this.spawnSystem = new SpawnSystem(this.configSnapshot);
     this.state = this.createInitialState(this.configSnapshot);
@@ -83,23 +90,35 @@ export class Game {
       nextProjectileId: 1,
       score: 0,
       elapsedSeconds: 0,
-      isRunning: true,
+      durationSeconds: config.sessionDuration,
+      remainingSeconds: config.sessionDuration,
+      status: 'running',
+      finishReason: null,
     };
   }
 
   private update(deltaSeconds: number): void {
-    if (!this.state?.isRunning || !this.configSnapshot) return;
+    if (this.state?.status !== 'running' || !this.configSnapshot) return;
+    if (this.state.remainingSeconds <= 0) {
+      this.state.remainingSeconds = 0;
+      this.state.elapsedSeconds = this.state.durationSeconds;
+      this.finishMatch('time_expired');
+      return;
+    }
+    if (!Number.isFinite(deltaSeconds) || deltaSeconds <= 0) return;
+    // The final update simulates only the time still available in the match.
+    const simulationSeconds = Math.min(deltaSeconds, this.state.remainingSeconds);
 
     const input = this.input.snapshot();
     // Small movement steps prevent crossing an entire collider between checks.
     const maxStepDistance = this.configSnapshot.playerCollisionRadius / 2;
     const steps = Math.max(1, Math.ceil(
-      this.configSnapshot.playerMovementSpeed * deltaSeconds / maxStepDistance,
+      this.configSnapshot.playerMovementSpeed * simulationSeconds / maxStepDistance,
     ), ...Array.from(this.state.enemies.values(), (enemy) => Math.ceil(
-      enemy.speed * deltaSeconds / (enemy.collisionRadius / 2),
+      enemy.speed * simulationSeconds / (enemy.collisionRadius / 2),
     )));
-    const stepSeconds = deltaSeconds / steps;
     for (let step = 0; step < steps; step += 1) {
+      const stepSeconds = Math.min(simulationSeconds / steps, this.state.remainingSeconds);
       this.movementSystem.update(this.state, input, stepSeconds, this.configSnapshot);
       this.movementSystem.updateEnemies(this.state, stepSeconds, this.configSnapshot);
       this.collisionSystem.resolveShipsIslands(this.state);
@@ -113,7 +132,22 @@ export class Game {
       }
       // New enemies begin AI/combat on the next step, preserving their validated spawn position.
       this.spawnSystem?.update(this.state, stepSeconds);
+      this.state.remainingSeconds = Math.max(0, this.state.remainingSeconds - stepSeconds);
+      // Remove only near-zero floating-point residue, without rounding the countdown.
+      if (this.state.remainingSeconds <= 1e-9) this.state.remainingSeconds = 0;
+      this.state.elapsedSeconds = this.state.durationSeconds - this.state.remainingSeconds;
+      if (this.state.remainingSeconds <= 0) {
+        this.finishMatch('time_expired');
+        return;
+      }
     }
+  }
+
+  private finishMatch(reason: MatchEndReason): void {
+    if (this.state?.status !== 'running') return;
+    this.state.status = 'finished';
+    this.state.finishReason = reason;
+    this.input.detach();
   }
 
   private updateProjectiles(state: GameState, deltaSeconds: number, config: GameConfig): void {

@@ -2,23 +2,52 @@ import type { MatchHistoryRecord } from '@/api/matchContracts';
 import { HISTORY_FIXTURE, OTHER_PLAYER_MATCHES } from './fixtures';
 import { getGameConfigKey } from '@/config/gameConfigKey';
 import type { RankingEntry } from '@/api/rankingContracts';
+import { clearConfirmedMatches, loadConfirmedMatches, saveConfirmedMatches } from '@/storage/confirmedMatchesStorage';
 
 // Confirmed records belong to the mock server, not React or gameplay state.
-const confirmedMatches = new Map<string, MatchHistoryRecord>();
+const fixtures = [...HISTORY_FIXTURE, ...OTHER_PLAYER_MATCHES];
+// Fixture IDs are reserved; persisted data cannot override the initial dataset.
+const restored = loadConfirmedMatches();
+const hasFixtureCollision = restored.some((record) => fixtures.some((fixture) => fixture.matchId === record.matchId));
+const confirmedMatches = new Map<string, MatchHistoryRecord>(
+  (hasFixtureCollision ? [] : restored).map((record) => [record.matchId, record]),
+);
+
+type RegistrationResult =
+  | { status: 'created' | 'existing'; record: MatchHistoryRecord }
+  | { status: 'conflict' }
+  | { status: 'storage_unavailable' };
+
+function sameMatch(a: MatchHistoryRecord, b: MatchHistoryRecord): boolean {
+  return a.matchId === b.matchId && a.playerId === b.playerId && a.playerName === b.playerName
+    && a.completedAt === b.completedAt && a.score === b.score
+    && a.enemiesDefeated === b.enemiesDefeated && a.durationSeconds === b.durationSeconds
+    && a.endReason === b.endReason && a.playerHealth === b.playerHealth
+    && getGameConfigKey(a.config) === getGameConfigKey(b.config);
+}
 
 function getAllMatches(): MatchHistoryRecord[] {
-  const matches = new Map([...HISTORY_FIXTURE, ...OTHER_PLAYER_MATCHES]
+  const matches = new Map(fixtures
     .map((record) => [record.matchId, record]));
   for (const record of confirmedMatches.values()) matches.set(record.matchId, record);
   return [...matches.values()];
 }
 
-export function registerMockMatch(record: MatchHistoryRecord): MatchHistoryRecord {
+export function registerMockMatch(record: MatchHistoryRecord): RegistrationResult {
   const existing = confirmedMatches.get(record.matchId)
     ?? getAllMatches().find((fixture) => fixture.matchId === record.matchId);
-  if (existing) return existing;
+  if (existing) return sameMatch(existing, record)
+    ? { status: 'existing', record: existing } : { status: 'conflict' };
+  // Persist acceptance before mutating memory or returning a successful POST.
+  if (!saveConfirmedMatches([...confirmedMatches.values(), record])) return { status: 'storage_unavailable' };
   confirmedMatches.set(record.matchId, record);
-  return record;
+  return { status: 'created', record };
+}
+
+export function resetConfirmedMockMatches(): boolean {
+  if (!clearConfirmedMatches()) return false;
+  confirmedMatches.clear();
+  return true;
 }
 
 export function getMockHistory(playerId: string): MatchHistoryRecord[] {

@@ -4,6 +4,8 @@
 
 ## 1. Visão geral do projeto
 
+**Estado atual após a etapa 23:** conclusões aceitas pelo MSW agora persistem após refresh em uma coleção versionada, compartilhada por ranking/histórico. Reenvios iguais recuperam o registro; IDs conflitantes recebem 409. Pendências e retries continuam futuros. As etapas anteriores preservam os limites que existiam quando foram implementadas.
+
 Pirate Battle é uma aplicação web que pretende ser um jogo 2D de combate naval visto de cima. A base usa React 19, TypeScript em modo estrito e PixiJS 8 para a parte gráfica. Vite serve e empacota a aplicação. TanStack Query, Axios e MSW formam a base da comunicação HTTP simulada; Playwright está configurado para testes E2E.
 
 A arquitetura planejada separa a interface e navegação React da simulação e renderização contínuas do jogo. O React deve cuidar de telas, menus e dados remotos; PixiJS deve desenhar a arena e o código de jogo deve atualizar o estado em um loop próprio, sem re-renderizar o React a cada frame.
@@ -13,6 +15,8 @@ Já existem telas de menu, opções, jogo, resultado, ranking e histórico; nave
 A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← e D/→. Space dispara pela proa; Q/E lançam três balas paralelas. Chaser e Shooter surgem periodicamente com seed e posições validadas. A partida usa countdown da simulação, padrão 120 s; ao expirar, congela o gameplay e mantém a arena visível. Pontuação autoritativa soma 1 por inimigo eliminado por projétil do jogador; autodestruição não pontua. HP zero encerra por defeated e congela o gameplay. HUD React usa painéis/ícones oficiais e lista semântica para pontos, HP, tempo MM:SS e status reais por snapshots; comandos aparecem em legenda com teclas identificadas; Pixi mostra barras oficiais acima de todos os navios. Pausa manual e automática por blur/aba oculta congela a simulação e exige Resume explícito. Options salva duração 60–180 s e intervalo de spawn 1–15 s localmente; novas partidas usam valores salvos. Término normal navega para Result com dados reais e persiste a última conclusão; abandono retorna ao menu sem substituir resultado. Conclusões agora são enviadas por mutation/Axios ao MSW e aparecem no histórico confirmado da sessão. Sons, ranking completo e robustez/persistência da API continuam pendentes.
 
 ## 2. Como a arquitetura funciona
+
+**Persistência dos confirmados:** `confirmedMatchesStorage` lê/valida um único dataset; `matchHistoryState` hidrata seu Map quando o módulo é carregado. O POST salva antes de confirmar e as duas consultas derivam desse mesmo Map combinado com fixtures. React continua acessando apenas hooks/API; não lê essa coleção diretamente. Resultado local e Options continuam em chaves separadas, pois representam responsabilidades diferentes.
 
 **Atualização da etapa 19:** ranking básico agora está funcional e paginado, compartilhando fixtures e confirmados com histórico. A descrição anterior de ranking pendente refere-se ao estado antes desta etapa; robustez e persistência remota ainda estão pendentes. GET ranking compara o snapshot completo e MSW funciona também no build.
 
@@ -1195,7 +1199,49 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 
 **Limitações e tradeoff:** há uma requisição pequena de verificação por chamada da API (compartilhada quando simultânea). A API do jogo é exclusivamente MSW nesta etapa. Não implementamos confirmação persistente, recuperação de partidas antigas falhadas, retries de POST, cenários configuráveis ou robustez completa de rede. Não atribuir o gatilho espontâneo a tempo/derrota sem evidência adicional.
 
+### Etapa 23 — Confirmados persistentes e submissão idempotente
+
+**Status:** Concluído
+
+**Responsável pela implementação:** Colaborativo — implementação pelo Codex, requisitos e decisões com o usuário.
+
+**O que foi implementado:** confirmados persistem após refresh; POST usa matchId para recuperar reenvios iguais ou rejeitar conflitos; reset remove apenas confirmados criados pelo usuário. Fixture, ranking e histórico continuam usando os contratos e fluxo TanStack Query → Axios → MSW existentes.
+
+**Arquivos principais envolvidos:** `src/storage/confirmedMatchesStorage.ts`, `src/mocks/matchHistoryState.ts`, `src/mocks/handlers.ts`, `tests/confirmedMatches.spec.ts`, `DEV_NOTES_PTBR.md`.
+
+**Como funciona:** localStorage usa a chave `pirate-battle:confirmed-matches:v1` com `{ version: 1, records: MatchHistoryRecord[] }`. Registros contêm ID da partida/jogador, nome, data, score, eliminações, duração efetiva, motivo, HP e snapshot completo de GameConfig. Não persistimos status de mutation, rank calculado ou fixtures. Records são gravados em ordem de ID para manter representação determinística. O Map hidrata uma vez ao carregar o módulo, antes das consultas, e continua sendo a coleção compartilhada do mock. Recuperar a interceptação via stop/start preserva a mesma coleção.
+
+**Por que foi feito dessa forma:** persistir na camada do servidor simulado distingue conclusão local de aceitação. O handler valida o contrato e registerMockMatch verifica duplicação/conflito; uma criação nova salva a coleção proposta antes de alterar o Map e retornar 201. Se setItem falha, retorna 503, sem confirmação em memória nem sucesso de API. Reenvio de registro já aceito retorna 200 com os dados existentes, sem nova escrita. Não criamos armazenamento paralelo para cada aba. INSTRUCOES.md e AGENTS.md foram lidos primeiro; sem commit.
+
+**Validação do armazenamento:** leitura ausente, bloqueada, JSON malformado, envelope incompatível, records inválidos, IDs duplicados ou colisão com IDs reservados de fixtures levam a coleção confirmada vazia, mantendo fixtures. A validação reutiliza isHistoryRecord, incluindo config completo requerido e regras de motivo/tempo/HP. Um registro inválido rejeita o dataset inteiro; não preenchemos campos nem tentamos adivinhar qual duplicata deveria vencer. O dado corrompido não é reescrito na leitura: uma nova aceitação válida ou reset poderá substituí-lo/removê-lo.
+
+**Idempotência e conflito:** matchId é único globalmente nessa coleção, inclusive fixtures. Comparamos todos os campos definidos no contrato: matchId/playerId/playerName/completedAt/score/enemiesDefeated/durationSeconds/endReason/playerHealth e config inteiro. Ordem das propriedades não altera igualdade do GameConfig, graças à chave canônica existente. Texto da data é comparado exatamente. Reenvio igual retorna o registro aceito, no mesmo processo e após refresh; mesmo ID com qualquer desses valores diferente retorna 409, sem sobrescrever memória/storage nem duplicar. Propriedades extras fora do contrato não definem identidade de uma partida.
+
+**Ranking e histórico:** fixtures ficam separadas e são combinadas por ID com os confirmados hidratados. Configuração compatível, ordenações e paginação não foram alteradas; totais refletem essa coleção. Invalidação por prefixos history/ranking após sucesso permanece existente. Abandono nunca chama POST e nunca entra nessa chave. Result mantém status da mutation na sessão; restaurar seu resultado após refresh não reenvia nem restaura cache de status remoto nesta etapa.
+
+**Reset:** `resetConfirmedMockMatches()` exportado por matchHistoryState remove a chave e limpa o Map, retornando true. Se removeItem falhar, retorna false e preserva memória. Fixtures, Options e último resultado local não são apagados. É uma função de infraestrutura preparada para futura seleção/reset de cenários; não criamos UI nem endpoint destrutivo novo. Queries consultadas novamente passam a refletir somente fixtures; a função isolada não modifica o cache React diretamente.
+
+**O que eu preciso entender:** confirmação versus conclusão, commit após persistência, Map como índice da coleção, type guards de JSON desconhecido, formatos versionados e idempotência por chave estável. Código com assistência do Codex: revisar comparação completa e as respostas 200/201/409/503 antes de apresentar em entrevista.
+
+**Como testar manualmente:** concluir uma partida e esperar Submitted; abrir histórico e ranking com configuração compatível; atualizar a página e conferir a mesma partida e totais. Jogar outra partida e conferir ambas sem duplicação. Em armazenamento do navegador, conferir apenas confirmados em records. Os testes automatizados exercitam POST repetido, conflito e reset diretamente pela infraestrutura real; não há botão de reenvio ou reset nesta etapa.
+
+**Possíveis perguntas de entrevista:**
+
+- Por que não salvar como confirmado no Game? “Encerrar o jogo cria um resultado local; só a API pode aceitar esse registro.”
+- O que é idempotência aqui? “Repetir o mesmo POST com o mesmo matchId e dados recupera a mesma partida, sem somar entradas.”
+- E se o ID repetir com dados diferentes? “Retorno 409 e preservo o registro original.”
+- E se localStorage estiver cheio? “Não respondo com confirmação durável falsa; o POST retorna 503 e o Map não recebe a partida.”
+- Por que fixtures não estão no storage? “São o estado inicial determinístico; persistimos apenas os registros novos.”
+
+**Limitações intencionais:** sem outbox/pendências persistentes, retry de POST, recuperação após timeout com resposta perdida, sincronização concorrente entre abas, migração de versões desconhecidas ou UI completa de cenários. Falhas de escrita continuam visíveis no Result e não bloqueiam outro jogo. Partidas que falharam em etapas anteriores não são reconstruídas.
+
+**Verificações da etapa 23:** 15 testes Playwright Chromium passaram: dez focados em persistência/idempotência/conflitos/reset/corrupção/acesso ou escrita de storage e cinco regressões de ranking/MSW. Typecheck, lint e build passaram pelo npm-cli da instalação Node. A primeira checagem estática encontrou uma união de status que não permitia estreitamento pelo TypeScript; separei os casos conflict/storage_unavailable e repeti typecheck/build com sucesso. Nenhum erro final; aviso de chunk maior que 500 kB permanece (principal 1.010,87 kB), além de NO_COLOR/FORCE_COLOR no runner. Artefatos de build/teste regenerados; sem commit.
+
 ## 5. Conceitos importantes para estudar
+
+- **Idempotência por matchId:** um identificador estável permite reconhecer a mesma escrita após refresh; dados conflitantes precisam de tratamento explícito, não sobrescrita.
+- **Persistir antes de confirmar:** gravar com sucesso antes de atualizar memória/responder evita aceitar um registro que desapareceria após refresh por falha de armazenamento.
+- **Versionamento de dados:** uma versão conhecida permite validar o envelope; versões incompatíveis exigem migração deliberada, não inferência silenciosa.
 
 - **Verificar transporte antes de enviar:** uma checagem pequena confirma a interceptação e permite corrigir o lifecycle sem repetir uma operação de escrita. Não equivale a recuperação de pendências.
 
@@ -1338,6 +1384,8 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 - **O que os testes automatizados garantem hoje?** “A abertura do menu e alguns caminhos de navegação. Não garantem que o jogo seja jogável.”
 
 ## 7. Pontos que ainda não domino
+
+- **Confirmados persistentes pelo Codex em colaboração:** revisar dataset versionado, rejeição integral de corrupção, hidratação do Map, conflito 409, falha de escrita 503, reset e limites de concorrência entre abas. Diferenciar essa etapa da futura recuperação de pendências.
 
 - **Reativação MSW pelo Codex em colaboração:** revisar probe, Promise compartilhada, interceptor Axios assíncrono, stop/start na mesma instância, diferença entre worker e Map da página, e limite entre recuperação de transporte e retry de POST.
 

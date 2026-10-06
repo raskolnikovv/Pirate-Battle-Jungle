@@ -1,17 +1,9 @@
 import { http, HttpResponse } from 'msw';
 import type { PaginatedResponse } from '@/types/domain';
-import type { MatchHistoryRecord, SubmitMatchRequest } from '@/api/matchContracts';
+import type { MatchHistoryRecord } from '@/api/matchContracts';
 import { getMockHistory, getMockRanking, registerMockMatch } from './matchHistoryState';
-import { isCompletedMatch } from '@/storage/completedMatchStorage';
+import { isHistoryRecord } from '@/api/responseValidation';
 import { LOCAL_PLAYER } from '@/config/localPlayer';
-
-function isSubmission(value: unknown): value is SubmitMatchRequest {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const record = value as Record<string, unknown>;
-  return typeof record.playerId === 'string' && record.playerId.trim().length > 0
-    && typeof record.playerName === 'string' && record.playerName.trim().length > 0
-    && isCompletedMatch({ ...record, elapsedSeconds: record.durationSeconds, registrationStatus: 'not_submitted' });
-}
 
 function paginate<T>(
   items: T[],
@@ -55,12 +47,16 @@ export const handlers = [
   }),
 
   http.post('/api/matches', async ({ request }) => {
+    let body: unknown;
     try {
-      const body: unknown = await request.json();
-      if (!isSubmission(body)) return HttpResponse.json({ message: 'Invalid completed match.' }, { status: 400 });
-      return HttpResponse.json(registerMockMatch(body), { status: 201 });
+      body = await request.json();
     } catch {
       return HttpResponse.json({ message: 'Invalid JSON.' }, { status: 400 });
     }
+    if (!isHistoryRecord(body)) return HttpResponse.json({ message: 'Invalid completed match.' }, { status: 400 });
+    const result = registerMockMatch(body);
+    if (result.status === 'conflict') return HttpResponse.json({ message: 'Match ID already exists with different data.' }, { status: 409 });
+    if (result.status === 'storage_unavailable') return HttpResponse.json({ message: 'Unable to persist confirmed match.' }, { status: 503 });
+    return HttpResponse.json(result.record, { status: result.status === 'created' ? 201 : 200 });
   }),
 ];

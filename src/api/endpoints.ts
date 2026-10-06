@@ -1,16 +1,16 @@
 import type {
   PaginatedResponse,
   PaginationParams,
-  RankingEntry,
 } from '@/types/domain';
 import { httpClient } from './client';
 import type { MatchHistoryRecord, SubmitMatchRequest } from './matchContracts';
 import { LOCAL_PLAYER } from '@/config/localPlayer';
+import type { RankingEntry, RankingParams } from './rankingContracts';
 
 export type { SubmitMatchRequest } from './matchContracts';
 
 export async function getRanking(
-  params: PaginationParams = { page: 1, pageSize: 20 },
+  params: RankingParams,
 ): Promise<PaginatedResponse<RankingEntry>> {
   const { data } = await httpClient.get<PaginatedResponse<RankingEntry>>(
     '/ranking',

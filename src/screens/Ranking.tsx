@@ -1,8 +1,11 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import { NavButton } from "@/components/NavButton";
 import { ScreenLayout } from "@/components/ScreenLayout";
 import { useRanking } from "@/hooks/useApi";
-import type { RankingEntry } from "@/types/domain";
+import { DEFAULT_GAME_CONFIG } from '@/config/gameConfig';
+import { loadGameOptions } from '@/config/gameOptions';
+import { getGameConfigKey } from '@/config/gameConfigKey';
+import { PaginationControls } from '@/components/PaginationControls';
 import type { ScreenName } from "@/app/navigationTypes";
 
 interface RankingProps {
@@ -10,7 +13,7 @@ interface RankingProps {
 }
 
 const tableWrapStyle: CSSProperties = {
-  overflow: "hidden",
+  overflowX: "auto",
   borderRadius: 12,
   border: "1px solid #334155",
 };
@@ -34,7 +37,9 @@ const centerColStyle: CSSProperties = {
 };
 
 export function Ranking({ onNavigate }: RankingProps) {
-  const { data, isLoading, error } = useRanking({ page: 1, pageSize: 20 });
+  const [config] = useState(() => ({ ...DEFAULT_GAME_CONFIG, ...loadGameOptions() }));
+  const [page, setPage] = useState(1);
+  const { data, isLoading, isFetching, error } = useRanking({ page, pageSize: 5, configKey: getGameConfigKey(config) });
 
   const rowStyle = (idx: number): CSSProperties => ({
     borderTop: "1px solid #334155",
@@ -44,10 +49,12 @@ export function Ranking({ onNavigate }: RankingProps) {
   return (
     <ScreenLayout title="Leaderboard">
       <div>
-        {isLoading && <p style={centerColStyle}>Loading ranking...</p>}
+        <p style={{ marginBottom: 16 }}>Matches using your saved settings: {config.sessionDuration}s session · {config.enemySpawnInterval}s spawn interval. All gameplay parameters must match.</p>
+        {isLoading && <p role="status" style={centerColStyle}>Loading ranking...</p>}
+        {!isLoading && isFetching && <p role="status">Updating ranking...</p>}
         {error && (
-          <p style={{ ...centerColStyle, color: "#f87171" }}>
-            Failed to load ranking. Please try again.
+          <p role="alert" style={{ ...centerColStyle, color: "#f87171" }}>
+            Failed to load ranking. Reopen this screen to try again.
           </p>
         )}
         {data && (
@@ -57,13 +64,13 @@ export function Ranking({ onNavigate }: RankingProps) {
                 <tr>
                   <th style={{ ...thStyle, width: 64 }}>#</th>
                   <th style={thStyle}>Player</th>
-                  <th style={{ ...thStyle, textAlign: "right" }}>High Score</th>
-                  <th style={{ ...thStyle, textAlign: "right" }}>Matches</th>
+                  <th style={{ ...thStyle, textAlign: "right" }}>Score</th>
+                  <th style={{ ...thStyle, textAlign: "right" }}>Duration</th>
                 </tr>
               </thead>
               <tbody>
-                {data.items.map((entry: RankingEntry, idx: number) => (
-                  <tr key={entry.rank} style={rowStyle(idx)}>
+                {data.items.map((entry, idx) => (
+                  <tr key={entry.matchId} style={rowStyle(idx)}>
                     <td
                       style={{
                         padding: "12px 16px",
@@ -73,7 +80,7 @@ export function Ranking({ onNavigate }: RankingProps) {
                     >
                       {entry.rank}
                     </td>
-                    <td style={{ padding: "12px 16px" }}>{entry.playerName}</td>
+                    <td style={{ padding: "12px 16px" }}>{entry.playerName}<small style={{ display: 'block', color: '#cbd5e1' }}>{entry.playerId}</small></td>
                     <td
                       style={{
                         padding: "12px 16px",
@@ -82,7 +89,7 @@ export function Ranking({ onNavigate }: RankingProps) {
                         fontWeight: 600,
                       }}
                     >
-                      {entry.highScore.toLocaleString()}
+                      {entry.score.toLocaleString()}
                     </td>
                     <td
                       style={{
@@ -91,14 +98,14 @@ export function Ranking({ onNavigate }: RankingProps) {
                         color: "#cbd5e1",
                       }}
                     >
-                      {entry.matchesPlayed}
+                      {entry.durationSeconds.toFixed(2)}s
                     </td>
                   </tr>
                 ))}
                 {data.items.length === 0 && (
                   <tr>
                     <td colSpan={4} style={centerColStyle}>
-                      No ranking entries yet.
+                      No completed matches for these settings yet.
                     </td>
                   </tr>
                 )}
@@ -106,6 +113,7 @@ export function Ranking({ onNavigate }: RankingProps) {
             </table>
           </div>
         )}
+        {data && <PaginationControls page={data.page} pageSize={data.pageSize} total={data.total} totalPages={data.totalPages} busy={isFetching} onPageChange={setPage} />}
 
         <div
           style={{ display: "flex", justifyContent: "center", paddingTop: 24 }}

@@ -14,6 +14,8 @@ A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← 
 
 ## 2. Como a arquitetura funciona
 
+**Atualização da etapa 19:** ranking básico agora está funcional e paginado, compartilhando fixtures e confirmados com histórico. A descrição anterior de ranking pendente refere-se ao estado antes desta etapa; robustez e persistência remota ainda estão pendentes. GET ranking compara o snapshot completo e MSW funciona também no build.
+
 - **React:** monta o aplicativo e apresenta telas, navegação e controles de interface. Em `App`, a tela atual é escolhida por estado local. React guarda loading e um snapshot de apresentação do HUD, sem receber coordenadas contínuas ou mapas da partida.
 - **PixiJS:** `GameCanvas` inicializa uma `Application` com coordenadas lógicas 960 × 600 e resolução do dispositivo; o canvas é escalado via CSS mantendo proporção. O ticker automático do Pixi fica desligado para usar o loop do jogo.
 - **Game:** valida duração 60–180 s, copia config e cria estado/SpawnSystem novos. Atualiza countdown e coordena sistemas somente com status running; paused para loop/input e resume reinicia o relógio. Ao terminar, remove input e mantém renderização do estado congelado.
@@ -215,6 +217,16 @@ Registro da decisão do marco #4. No marco #5, o teste foi ampliado para retorna
 **Alternativas possíveis:** manter tudo no App exigiria propagar estado sem necessidade; persistir o GameConfig inteiro permitiria dados antigos alterarem parâmetros não expostos ao usuário.
 
 **Como eu explicaria isso em uma entrevista:** “Salvo só as duas opções permitidas. Cada partida lê uma vez e usa uma cópia; salvar depois só muda a próxima.”
+
+### Ranking por partida e configuração completa
+
+**O que foi decidido:** cada partida confirmada gera uma entrada; a API compara todos os campos do GameConfig usando JSON com chaves ordenadas recursivamente.
+
+**Por que fizemos assim:** duração, spawn, dificuldade, arena e armas influenciam oportunidades de pontuar. Usar o snapshot inteiro evita comparar balanceamentos diferentes. A chave inclui até parâmetros atualmente redundantes; isso é conservador e não exige manter uma segunda lista de configuração.
+
+**Alternativas possíveis:** selecionar explicitamente campos relevantes ou usar hash versionado. O JSON canônico é inspecionável e evita colisões de hash, embora resulte em URL maior.
+
+**Como eu explicaria isso em uma entrevista:** “Ranking e histórico usam as mesmas partidas. Ordeno as chaves da configuração para comparar seus valores sem depender da ordem em que o objeto foi criado.”
 
 ## 4. Diário de implementação
 
@@ -1060,7 +1072,46 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 
 **Limitações intencionais:** confirmados e status remoto só em memória; refresh reinicia esse estado. Sem pendências persistidas, reenvio manual/automático, recovery após timeout de POST, protocolo completo de idempotência, proteção avançada de respostas fora de ordem, cenários MSW configuráveis ou ranking dinâmico. Histórico mostra primeira página de 20 registros; controles completos de paginação ficam para etapa própria. Requisito original de registro consistente/persistente nas duas abas ainda não está concluído.
 
+### Etapa 19 — Ranking pela API e paginação básica
+
+**Status:** Concluído
+
+**Responsável pela implementação:** Colaborativo — código pelo Codex; requisitos e decisões em colaboração com o usuário.
+
+**O que foi implementado:** ranking por partida, filtragem por configuração completa, ordenação determinística, fixtures coerentes com pontuação de 1 por eliminação, cinco resultados por página, navegação Previous/Next e estados loading/vazio/erro/atualização em segundo plano.
+
+**Arquivos principais envolvidos:** `src/config/gameConfigKey.ts`, `src/api/rankingContracts.ts`, `src/api/endpoints.ts`, `src/hooks/useApi.ts`, `src/types/domain.ts`, `src/mocks/fixtures.ts`, `src/mocks/matchHistoryState.ts`, `src/mocks/handlers.ts`, `src/components/PaginationControls.tsx`, `src/screens/Ranking.tsx`.
+
+**Como funciona:** React → useRanking → Axios GET /api/ranking → MSW → mesma coleção usada no histórico. Fixtures locais, oito jogadores externos e Map de confirmados são combinados por matchId. POST recupera IDs já existentes; ranking não cria um segundo registro. Filtra, ordena, calcula posição global e só depois pagina. Contrato compartilhado retorna items/page/pageSize/total/totalPages. Componente de paginação está preparado para uso futuro no histórico, cuja UI não foi alterada.
+
+**Por que foi feito dessa forma:** INSTRUCOES.md exige uma entrada por partida e mesma configuração. O antigo scaffold agregava highScore/matchesPlayed e não atendia essa regra. Segui as instruções originais, conforme autorização anterior do usuário; gameplay, submissão e abandono foram preservados. Sem commit.
+
+**Compatibilidade:** todos os campos de GameConfig participam: arenaWidth/arenaHeight; playerBoundaryPadding/enemyBoundaryPadding/playerCollisionRadius/islandCollisionRadius; sessionDuration/enemySpawnInterval; enemySpawnWeights/enemyKillRewards (chaser/shooter); enemySpawnMinimumDistance/enemySpawnMaxAttempts/enemySpawnMargin/enemySpawnSeed; playerHealth/playerMovementSpeed/playerRotationSpeed; projectileSpeed/projectileDamage/projectileLifetime/projectileCollisionRadius; frontShotOffset/broadsideOffset/broadsideProjectileCount/broadsideSpacing; weaponCooldowns (primary/secondary); todos os campos de chaser e shooter, incluindo vida, velocidades, dano, colisão, cooldown, projéteis e alcance. Assim também diferenças de dificuldade alteram a chave. A tela captura defaults + opções salvas ao abrir, mostra duração/spawn e informa que todos os parâmetros devem coincidir. Não permite consultar configurações antigas nesta etapa.
+
+**Desempate exato:** score decrescente → durationSeconds crescente → completedAt crescente (data mais antiga primeiro) → matchId crescente por comparação de strings, sem depender de locale. Menor duração privilegia a mesma pontuação obtida em menos tempo ativo. IDs únicos concluem a ordem; não há ranking agregado por jogador.
+
+**Cache:** query key inclui configKey/page/pageSize. Sucesso do envio já invalida todas as queries de ranking e histórico; useRanking agora refaz a consulta em cada montagem, mesmo com cache recente. Dados de configurações ou páginas distintas não compartilham a mesma chave. Nenhum dado remoto é copiado para estado React.
+
+**O que eu preciso entender:** JSON canônico, ordenação com desempates, posição calculada antes de slice, identidade de queries, diferença entre configuração salva e snapshot histórico. Código feito com auxílio do Codex: estudar antes de explicar em entrevista.
+
+**Como testar manualmente:** abrir ranking com opções padrão (11 fixtures, três páginas); navegar e conferir posições contínuas; concluir uma partida, verificar Submitted, histórico e ranking do Captain; reabrir ranking e conferir atualização; salvar opções diferentes e verificar lista vazia até concluir partida compatível; abandonar combate e conferir ausência de novo registro. Reabrir após refresh restaura somente fixtures, pois confirmados ainda vivem em memória.
+
+**Possíveis perguntas de entrevista:**
+
+- Por que não comparar só duração? “Armas, spawn e dificuldade também alteram a chance de pontuar.”
+- Por que calcular rank antes de paginar? “A posição é global; a segunda página não deve começar de novo em 1.”
+- Por que não adicionar manualmente o resultado no React? “A API é a fonte dos confirmados; invalido o cache e consulto de novo.”
+- Como evitar duplicação entre abas? “As duas consultam os mesmos registros identificados por matchId.”
+
+**Limitações intencionais:** sem persistência de confirmados/pendências, retries avançados, recovery após timeout de POST, cenários configuráveis ou respostas fora de ordem. Sem novos testes E2E/browser; validação desta etapa usa typecheck/lint/build solicitados.
+
+**Verificações da etapa 19:** typecheck, lint e build passaram usando o npm-cli da instalação Node (launcher npm local está quebrado). Build mantém aviso de chunk acima de 500 kB; principal minificado 1.007,92 kB. Nenhum erro nessas verificações. Artefatos de build foram regenerados; nenhum commit.
+
 ## 5. Conceitos importantes para estudar
+
+- **Serialização canônica:** representar os mesmos valores com as mesmas chaves ordenadas permite comparação determinística de objetos aninhados.
+- **Ordenação total e paginação:** desempates estáveis evitam posições ambíguas; filtrar e ordenar precedem o recorte da página.
+- **Query key parametrizada:** configuração e página identificam consultas diferentes; invalidação pelo prefixo ranking atualiza todas as variantes.
 
 - **Mutation:** gerencia envio e estados de operação; não substitui simulação e não deve repetir POST por efeitos de montagem.
 - **Invalidação de cache:** marca consultas relacionadas como desatualizadas; refetch consulta o mock/servidor novamente.
@@ -1137,6 +1188,9 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 
 ## 6. Perguntas que eu deveria conseguir responder
 
+- **Como o ranking compara partidas justas?** “Ele exige igualdade de todos os parâmetros do snapshot, ordena por pontos e aplica desempates estáveis antes de paginar.”
+- **Por que o ranking atual não mostra minha partida antiga após mudar Options?** “A tela consulta a configuração salva atual; a partida antiga pertence a outra configuração.”
+
 - **Como a conclusão vira histórico?** “Mutation Query → Axios → POST MSW → Map confirmado; GET retorna registro e cache é invalidado.”
 - **Sucesso local é sucesso da API?** “Não; Result usa onSuccess HTTP para Submitted. Salvar JSON local é outra operação.”
 
@@ -1192,6 +1246,8 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 - **O que os testes automatizados garantem hoje?** “A abertura do menu e alguns caminhos de navegação. Não garantem que o jogo seja jogável.”
 
 ## 7. Pontos que ainda não domino
+
+- **Ranking implementado pelo Codex em colaboração:** revisar canonicalização recursiva, igualdade da configuração inteira, comparação de strings sem locale, ranking por partida, Map compartilhado e invalidação por prefixo. Validar navegação por teclado e fluxos reais no navegador antes da entrevista.
 
 - **Integração API implementada pelo Codex em colaboração:** revisar callbacks de mutation, cache por ID, disabled query de status, DTO, validação do POST, worker MSW 3 e diferença entre memória/persistência. Robustez original completa ainda precisa de estudo/implementação.
 

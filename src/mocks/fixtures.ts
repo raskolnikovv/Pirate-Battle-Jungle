@@ -1,18 +1,23 @@
-import type { RankingEntry } from '@/types/domain';
 import type { MatchHistoryRecord } from '@/api/matchContracts';
 import { DEFAULT_GAME_CONFIG } from '@/config/gameConfig';
 import { LOCAL_PLAYER } from '@/config/localPlayer';
 
-export const RANKING_FIXTURE: RankingEntry[] = [
-  { rank: 1, playerName: 'Blackbeard', highScore: 12500, matchesPlayed: 42 },
-  { rank: 2, playerName: 'JackSparrow', highScore: 11200, matchesPlayed: 38 },
-  { rank: 3, playerName: 'DavyJones', highScore: 9800, matchesPlayed: 21 },
-  { rank: 4, playerName: 'Barbossa', highScore: 8400, matchesPlayed: 33 },
-  { rank: 5, playerName: 'CaptainHook', highScore: 7100, matchesPlayed: 19 },
-  { rank: 6, playerName: 'EdwardTeach', highScore: 6500, matchesPlayed: 15 },
-  { rank: 7, playerName: 'MaryRead', highScore: 5900, matchesPlayed: 12 },
-  { rank: 8, playerName: 'AnneBonny', highScore: 5300, matchesPlayed: 14 },
-];
+// Other players also contribute completed matches, never unrelated aggregates.
+export const OTHER_PLAYER_MATCHES: MatchHistoryRecord[] = [
+  'Blackbeard', 'JackSparrow', 'DavyJones', 'Barbossa',
+  'CaptainHook', 'EdwardTeach', 'MaryRead', 'AnneBonny',
+].map((playerName, index) => ({
+  matchId: `fixture-other-${index + 1}`,
+  playerId: `fixture-player-${index + 1}`,
+  playerName,
+  config: DEFAULT_GAME_CONFIG,
+  score: 18 - Math.floor(index / 2),
+  enemiesDefeated: 18 - Math.floor(index / 2),
+  endReason: 'time_expired',
+  durationSeconds: DEFAULT_GAME_CONFIG.sessionDuration,
+  playerHealth: 30,
+  completedAt: `2026-10-04T12:0${index}:00Z`,
+}));
 
 const fixtureIdentity = { playerId: LOCAL_PLAYER.id, playerName: LOCAL_PLAYER.name, config: DEFAULT_GAME_CONFIG };
 

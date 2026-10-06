@@ -45,13 +45,6 @@ export type MatchEndReason =
   | 'player_defeated'
   | 'quit';
 
-export interface RankingEntry {
-  rank: number;
-  playerName: string;
-  highScore: number;
-  matchesPlayed: number;
-}
-
 export interface PaginationParams {
   page: number;
   pageSize: number;

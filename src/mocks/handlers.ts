@@ -1,8 +1,7 @@
 import { http, HttpResponse } from 'msw';
-import type { PaginatedResponse, RankingEntry } from '@/types/domain';
+import type { PaginatedResponse } from '@/types/domain';
 import type { MatchHistoryRecord, SubmitMatchRequest } from '@/api/matchContracts';
-import { RANKING_FIXTURE } from './fixtures';
-import { getMockHistory, registerMockMatch } from './matchHistoryState';
+import { getMockHistory, getMockRanking, registerMockMatch } from './matchHistoryState';
 import { isCompletedMatch } from '@/storage/completedMatchStorage';
 import { LOCAL_PLAYER } from '@/config/localPlayer';
 
@@ -39,7 +38,9 @@ export const handlers = [
     const url = new URL(request.url);
     const page = Number(url.searchParams.get('page') ?? '1');
     const pageSize = Number(url.searchParams.get('pageSize') ?? '20');
-    return HttpResponse.json(paginate<RankingEntry>(RANKING_FIXTURE, page, pageSize));
+    const configKey = url.searchParams.get('configKey');
+    if (!configKey) return HttpResponse.json({ message: 'Configuration key is required.' }, { status: 400 });
+    return HttpResponse.json(paginate(getMockRanking(configKey), page, pageSize));
   }),
 
   http.get('/api/history', ({ request }) => {

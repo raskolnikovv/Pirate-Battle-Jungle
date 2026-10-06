@@ -8,20 +8,22 @@ import {
 import type { PaginationParams } from "@/types/domain";
 import type { MatchRegistration } from "@/api/matchContracts";
 import { LOCAL_PLAYER } from "@/config/localPlayer";
+import type { RankingParams } from '@/api/rankingContracts';
 
 export const queryKeys = {
-  ranking: (params?: PaginationParams) => ["ranking", params] as const,
+  ranking: (params: RankingParams) => ["ranking", params] as const,
   history: (params?: PaginationParams) => ["history", LOCAL_PLAYER.id, params] as const,
   registration: (matchId?: string) => ["match-registration", matchId] as const,
   matches: ["matches"] as const,
 };
 
 export function useRanking(
-  params: PaginationParams = { page: 1, pageSize: 20 },
+  params: RankingParams,
 ) {
   return useQuery({
     queryKey: queryKeys.ranking(params),
     queryFn: () => getRanking(params),
+    refetchOnMount: 'always',
   });
 }
 

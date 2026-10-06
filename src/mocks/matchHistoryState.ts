@@ -24,7 +24,8 @@ export function registerMockMatch(record: MatchHistoryRecord): MatchHistoryRecor
 export function getMockHistory(playerId: string): MatchHistoryRecord[] {
   return getAllMatches()
     .filter((record) => record.playerId === playerId)
-    .sort((a, b) => Date.parse(b.completedAt) - Date.parse(a.completedAt) || a.matchId.localeCompare(b.matchId));
+    .sort((a, b) => Date.parse(b.completedAt) - Date.parse(a.completedAt)
+      || (a.matchId < b.matchId ? -1 : a.matchId > b.matchId ? 1 : 0));
 }
 
 export function getMockRanking(configKey: string): RankingEntry[] {

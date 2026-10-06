@@ -1107,7 +1107,99 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 
 **Verificações da etapa 19:** typecheck, lint e build passaram usando o npm-cli da instalação Node (launcher npm local está quebrado). Build mantém aviso de chunk acima de 500 kB; principal minificado 1.007,92 kB. Nenhum erro nessas verificações. Artefatos de build foram regenerados; nenhum commit.
 
+### Etapa 20 — Paginação do Match History
+
+**Status:** Concluído
+
+**Responsável pela implementação:** Colaborativo — implementação pelo Codex, requisitos definidos pelo usuário.
+
+**O que foi implementado:** Match History agora permite navegar em páginas de cinco registros usando o mesmo PaginationControls do ranking. Dados de data, pontos, eliminações, duração, motivo e configuração foram preservados.
+
+**Arquivos principais envolvidos:** `src/screens/MatchHistory.tsx`, `src/mocks/matchHistoryState.ts`, `DEV_NOTES_PTBR.md`. Contratos, endpoint Axios, handler MSW e hook existentes foram inspecionados e reutilizados sem alterações.
+
+**Como funciona:** React guarda somente o número solicitado da página. useHistory recebe page/pageSize, já incluídos na query key junto ao jogador local, e consulta Axios → MSW. A API filtra pelo jogador, ordena e só então pagina; retorna PaginatedResponse<MatchHistoryRecord> com items/page/pageSize/total/totalPages. PaginationControls usa os metadados da resposta, desabilita Previous na primeira página e Next na última; vazio e página única não permitem navegação inválida. Durante fetch os botões ficam desabilitados. Reabrir a tela começa na página 1 e refaz a consulta por refetchOnMount:always.
+
+**Por que foi feito dessa forma:** a infraestrutura já atendia o contrato original; faltava a navegação da interface. Reutilizar o mesmo componente evita dois sistemas de paginação. INSTRUCOES.md foi lido primeiro e seguido, conforme orientação anterior do usuário. Sem alterações no ranking, gameplay, submissão ou abandono; sem commit.
+
+**Ordenação:** completedAt decrescente (mais recente primeiro), depois matchId crescente por comparação de strings sem locale. IDs únicos tornam o desempate determinístico mesmo em navegadores com idiomas distintos. Histórico reúne configurações diferentes do mesmo jogador; o filtro de compatibilidade continua exclusivo do ranking.
+
+**Confirmações e cache:** sucesso do POST já invalida todas as páginas de history e ranking pelo prefixo da query key. A próxima consulta calcula novamente posição e totais usando a coleção compartilhada de fixtures/confirmados, sem inserir cópias manualmente no React. Novas partidas mais recentes entram no começo e podem deslocar registros entre páginas; uma página posterior permanece selecionada enquanto a tela estiver montada. Abandono não faz POST nem cria registro.
+
+**O que eu preciso entender:** estado de navegação versus dados remotos, chave de query parametrizada, invalidação de múltiplas páginas, paginação após filtro/ordenação e desempate estável. Código escrito pelo Codex: revisar antes da entrevista.
+
+**Como testar manualmente:** abrir histórico e conferir três fixtures em uma página, com ambos os botões desabilitados; concluir três partidas na mesma sessão para ultrapassar cinco registros; abrir histórico e conferir as conclusões mais recentes primeiro, total de seis e duas páginas; usar Next/Previous e verificar ausência de repetição entre páginas; concluir outra partida e reabrir para conferir posição inicial e total atualizado. Conferir que abandono não altera o total e ranking continua navegável. Vazio mantém os dois botões desabilitados quando a API retorna zero registros; não foi criado cenário artificial para isso.
+
+**Possíveis perguntas de entrevista:**
+
+- Onde ficam as partidas da página? “No cache do TanStack Query; React guarda apenas qual página quero consultar.”
+- Por que ordenar antes de paginar? “Para que as páginas sejam recortes da mesma sequência cronológica.”
+- Como uma confirmação atualiza várias páginas? “A mutation invalida pelo prefixo history, e a API recalcula os dados e totais.”
+
+**Limitações:** confirmados continuam em memória e se perdem após refresh; robustez avançada permanece adiada. Nenhum teste de navegador/E2E executado nesta tarefa; validações solicitadas registradas abaixo.
+
+**Verificações da etapa 20:** typecheck, lint e build passaram pelo npm-cli da instalação Node. Permanece o aviso de chunk maior que 500 kB; principal minificado de 1.008,07 kB. Nenhum erro nessas verificações. Artefatos de build regenerados; sem commit.
+
+### Etapa 21 — Correção de crash ao abrir Leaderboard
+
+**Status:** Concluído — falha reproduzida e corrigida na fronteira HTTP; o gatilho espontâneo da interrupção de MSW no navegador do usuário ainda não foi confirmado.
+
+**Responsável pela implementação:** Colaborativo — relato/teste manual pelo usuário; investigação, correção e regressão pelo Codex.
+
+**O que foi implementado:** Axios exige JSON e rejeita erros de parsing; consultas de ranking/histórico recebem unknown e validam registros e metadados antes de retornar dados ao TanStack Query. Não há fallback para lista vazia nem try/catch genérico no render. Quatro testes Chromium de regressão foram adicionados.
+
+**Arquivos principais envolvidos:** `src/api/client.ts`, `src/api/endpoints.ts`, `src/api/responseValidation.ts`, `tests/ranking.spec.ts`, `DEV_NOTES_PTBR.md`.
+
+**Como funciona:** antes, o tipo genérico de Axios prometia uma resposta paginada sem verificar seu conteúdo. Interromper o Service Worker via CDP reproduziu GET /api/ranking com HTTP 200/text/html (documento da SPA). A string entrava no cache como sucesso; data era truthy, mas data.items era undefined. Ranking lançava TypeError ao chamar map e React desmontava a árvore, deixando #root vazio. Reabrir com refetch podia trocar dados válidos por HTML, explicando o caráter intermitente desse mecanismo. A origem espontânea da interrupção no ambiente do usuário não foi observada nos testes normais e não deve ser apresentada como comprovada.
+
+**Por que foi feito dessa forma:** Accept:application/json também impede o fallback HTML normal do Vite para uma chamada API não interceptada (vira erro HTTP). responseType:json com silentJSONParsing:false rejeita HTML/JSON inválido mesmo em HTTP 200. readPaginatedResponse valida items, registros completos (reutiliza a validação existente de conclusão), rank positivo e metadados inteiros coerentes. Só dados válidos chegam ao cache. Erros seguem o estado de consulta já existente; dados válidos anteriores podem permanecer visíveis com alerta durante falha de atualização. Histórico tinha a mesma suposição e recebeu a mesma proteção. Nenhuma mudança de config, ordenação, paginação, navegação ou gameplay foi necessária.
+
+**O que eu preciso entender:** interfaces TypeScript não existem para validar dados de rede em runtime; usar unknown obriga a provar o contrato. HTTP 200 não garante que a resposta seja JSON nem que tenha o formato esperado. Service Worker e estado dos handlers em memória são coisas distintas. Rejeitar resposta inválida é correção da fronteira HTTP, não fingir sucesso com dados vazios.
+
+**Como testar manualmente:** repetir Menu → Leaderboard → páginas → Menu → History → Menu → Leaderboard; concluir por tempo e derrota e verificar Submitted, ranking e histórico. Se houver falha de interceptação, deve aparecer erro de consulta com navegação disponível, sem tela em branco. Confirmados continuam em memória, sem persistência nova.
+
+**Possíveis perguntas de entrevista:**
+
+- O generic de Axios garante o formato? “Não. Ele ajuda o compilador; eu preciso validar o conteúdo recebido em runtime.”
+- Por que a falha parecia aleatória? “Consultas válidas funcionavam; quando chegava HTML como sucesso, o cache era substituído e o render quebrava.”
+- Foi um erro do timer? “Não encontrei diferença causal entre tempo e derrota; ambos passaram. Reproduzi a falha interrompendo o worker, mas não confirmei o gatilho espontâneo relatado.”
+
+**Validação:** antes da correção, 80 ciclos de menu/ranking (40 alternando histórico/páginas), quatro conclusões aceleradas e uma partida de 60 segundos reais não causaram crash; interromper o worker reproduziu TypeError e root vazio. Após a correção, quatro testes Playwright Chromium passaram (reabertura/páginas/histórico, worker interrompido com cache prévio, HTTP 200 HTML, JSON com registro inválido). Uma primeira execução falhou só por seletor de teste que ignorava o ID textual junto ao nome; corrigido e repetido com sucesso. Também validei em Chromium os dois motivos de término, POST confirmado, ranking/paginação, histórico e reabertura: zero exceções não tratadas. Os términos foram acelerados apenas na instrumentação, mantendo os caminhos reais do jogo e API. Typecheck/lint/build passaram; build mantém aviso de chunk acima de 500 kB (principal 1.009,01 kB). Playwright avisou sobre NO_COLOR/FORCE_COLOR no ambiente. Relatórios/artefatos de teste e build foram regenerados.
+
+**Limitações observadas:** a consulta desabilitada de status do Result já emite aviso de queryFn ausente no TanStack Query instalado; não causou crash nos testes e não foi alterada nesta correção. Recuperação/persistência avançada continuam fora do escopo. INSTRUCOES.md e AGENTS.md lidos e preservados. Nenhum commit.
+
+### Etapa 22 — Reativação da interceptação antes de consultas e envios
+
+**Status:** Concluído — recuperação validada com interrupção do worker antes da terceira partida. O gatilho espontâneo no navegador do usuário continua sem confirmação independente.
+
+**Responsável pela implementação:** Colaborativo — usuário identificou falha após partidas consecutivas; investigação, código e testes pelo Codex.
+
+**O que foi implementado:** verificação real da interceptação na inicialização e antes de cada chamada Axios. MSW expõe GET /api/mock-status com marcador próprio. Se o worker estiver desativado, inicia; se estiver marcado como ativo mas a requisição não for interceptada, usa stop/start públicos na mesma instância e verifica novamente. Não refaz o POST da partida. Result usa queryFn:skipToken para observar o cache sem warning de função ausente.
+
+**Arquivos principais envolvidos:** `src/mocks/browser.ts`, `src/mocks/handlers.ts`, `src/main.tsx`, `src/api/client.ts`, `src/hooks/useApi.ts`, `tests/ranking.spec.ts`, `DEV_NOTES_PTBR.md`.
+
+**Como funciona:** um interceptor Axios aguarda ensureMockWorkerReady antes de transmitir GET ou POST. O probe usa fetch separado, Accept JSON, no-store e limite de três segundos, evitando recursão no interceptor. Valida resposta e marcador, não somente readyState. Chamadas simultâneas compartilham a Promise de verificação/ativação; finally libera a referência ao terminar. Perda de interceptação com resposta não correspondente permite uma reativação; falhas reais da verificação continuam propagadas para a query/mutation, sem sucesso fictício. Map de confirmados e handlers continuam na mesma página e não são recriados. Assim, reiniciar o Service Worker não apaga a coleção da sessão; refresh da página ainda apaga.
+
+**Por que foi feito dessa forma:** a etapa 21 protegia o render, mas não restaurava o transporte MSW. Depois de perder o conjunto de clientes ativos no Service Worker, a instância da página pode continuar marcada como enabled e novos envios/consultas chegam ao servidor Vite. Apenas tratar isso como Failed deixa o jogador preso com cache antigo. A verificação anterior ao envio evita transmitir a conclusão enquanto a interceptação estiver ausente. Isso corrige o lifecycle do mock; não implementa outbox, persistência ou reenvio automático de POST. INSTRUCOES.md foi lido primeiro e preservado; sem commit.
+
+**O que eu preciso entender:** estado da instância JavaScript não prova que o transporte está interceptando; probe verifica o comportamento. Estado da página (Map) e estado do Service Worker (clientes ativos) são diferentes. Promise compartilhada evita reativações simultâneas; skipToken indica que a consulta de status não possui fetch. Código implementado pelo Codex: estudar esses pontos antes da entrevista.
+
+**Como testar manualmente:** jogar quatro partidas sem refresh, alternando tempo/derrota; cada Result deve apresentar Submitted; conferir contagem crescente no ranking da mesma configuração e histórico, inclusive paginação. Abandono continua sem envio. Registros que já falharam antes desta correção não são reconstruídos; recuperação de pendências permanece futura.
+
+**Possíveis perguntas de entrevista:**
+
+- Por que verificar antes do POST? “Para corrigir a interceptação antes de transmitir; não preciso repetir uma requisição que possa ter sido registrada.”
+- Reiniciar MSW apaga o histórico? “Não nesta correção: a mesma instância e o Map da página são preservados. Refresh da página ainda perde os confirmados.”
+- Por que não basta readyState? “A biblioteca pode estar enabled enquanto o worker do navegador perdeu os clientes ativos.”
+
+**Validação:** doze partidas consecutivas aceleradas inicialmente passaram, portanto não há prova de um limite fixo na terceira partida. Teste de regressão agora interrompe o worker antes da terceira, conclui quatro partidas pelos caminhos reais de Game/Result/POST, verifica Submitted e contagens exatas nas duas abas sem alertas ou exceções. Términos acelerados só na instrumentação; não é teste completo de combate. Cinco testes Chromium passaram: quatro partidas com recuperação, reabertura/paginação/histórico, recuperação antes de ranking, rejeição de HTML HTTP 200 e JSON inválido. Ajustei os imports da instrumentação para usar as URLs realmente carregadas pelo Vite, incluindo parâmetros de HMR; antes, duas injeções de resposta usavam outra instância desativada e o teste não exercitava a falha. Typecheck, lint e build passaram. Principal chunk 1.009,73 kB, mantendo aviso acima de 500 kB; Playwright mantém aviso ambiental NO_COLOR/FORCE_COLOR. Artefatos de build/teste regenerados.
+
+**Limitações e tradeoff:** há uma requisição pequena de verificação por chamada da API (compartilhada quando simultânea). A API do jogo é exclusivamente MSW nesta etapa. Não implementamos confirmação persistente, recuperação de partidas antigas falhadas, retries de POST, cenários configuráveis ou robustez completa de rede. Não atribuir o gatilho espontâneo a tempo/derrota sem evidência adicional.
+
 ## 5. Conceitos importantes para estudar
+
+- **Verificar transporte antes de enviar:** uma checagem pequena confirma a interceptação e permite corrigir o lifecycle sem repetir uma operação de escrita. Não equivale a recuperação de pendências.
+
+- **Validação na fronteira HTTP:** tipos estáticos não verificam respostas externas. JSON inválido ou metadados incorretos devem falhar na query antes de entrar no cache e alcançar o render.
 
 - **Serialização canônica:** representar os mesmos valores com as mesmas chaves ordenadas permite comparação determinística de objetos aninhados.
 - **Ordenação total e paginação:** desempates estáveis evitam posições ambíguas; filtrar e ordenar precedem o recorte da página.
@@ -1246,6 +1338,12 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 - **O que os testes automatizados garantem hoje?** “A abertura do menu e alguns caminhos de navegação. Não garantem que o jogo seja jogável.”
 
 ## 7. Pontos que ainda não domino
+
+- **Reativação MSW pelo Codex em colaboração:** revisar probe, Promise compartilhada, interceptor Axios assíncrono, stop/start na mesma instância, diferença entre worker e Map da página, e limite entre recuperação de transporte e retry de POST.
+
+- **Correção de runtime pelo Codex em colaboração:** estudar parsing Axios, Accept versus Content-Type, unknown/type guards, cache preservado após refetch falho e reprodução de falha de Service Worker via CDP. Distinguir causa de render comprovada do gatilho ambiental ainda não confirmado.
+
+- **Histórico paginado implementado pelo Codex em colaboração:** revisar query key por jogador/página, recálculo dos totais, deslocamento de registros após novas confirmações e reutilização do componente de navegação.
 
 - **Ranking implementado pelo Codex em colaboração:** revisar canonicalização recursiva, igualdade da configuração inteira, comparação de strings sem locale, ranking por partida, Map compartilhado e invalidação por prefixo. Validar navegação por teclado e fluxos reais no navegador antes da entrevista.
 

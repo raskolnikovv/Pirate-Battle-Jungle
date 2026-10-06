@@ -1,4 +1,5 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
+import { PaginationControls } from "@/components/PaginationControls";
 import { NavButton } from "@/components/NavButton";
 import { ScreenLayout } from "@/components/ScreenLayout";
 import { useHistory } from "@/hooks/useApi";
@@ -44,7 +45,8 @@ const reasonColor: Record<MatchHistoryRecord['endReason'], string> = {
 };
 
 export function MatchHistory({ onNavigate }: MatchHistoryProps) {
-  const { data, isLoading, isFetching, error } = useHistory({ page: 1, pageSize: 20 });
+  const [page, setPage] = useState(1);
+  const { data, isLoading, isFetching, error } = useHistory({ page, pageSize: 5 });
 
   const rowStyle = (idx: number): CSSProperties => ({
     borderTop: "1px solid #334155",
@@ -144,6 +146,17 @@ export function MatchHistory({ onNavigate }: MatchHistoryProps) {
               </tbody>
             </table>
           </div>
+        )}
+
+        {data && (
+          <PaginationControls
+            page={data.page}
+            pageSize={data.pageSize}
+            total={data.total}
+            totalPages={data.totalPages}
+            busy={isFetching}
+            onPageChange={setPage}
+          />
         )}
 
         <div

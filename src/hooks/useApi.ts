@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { skipToken, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getRanking,
   getHistory,
@@ -60,6 +60,7 @@ export function useSubmitMatch() {
 export function useMatchRegistration(matchId?: string) {
   return useQuery<MatchRegistration>({
     queryKey: queryKeys.registration(matchId),
+    queryFn: skipToken,
     enabled: false,
     initialData: { status: 'not_submitted' },
   });

@@ -34,6 +34,8 @@ function paginate<T>(
 }
 
 export const handlers = [
+  http.get('/api/mock-status', () => HttpResponse.json({ service: 'pirate-battle-msw' })),
+
   http.get('/api/ranking', ({ request }) => {
     const url = new URL(request.url);
     const page = Number(url.searchParams.get('page') ?? '1');

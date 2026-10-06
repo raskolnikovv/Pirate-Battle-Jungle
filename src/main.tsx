@@ -2,12 +2,12 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "@/app/App";
 import { ReactQueryProvider } from "@/app/ReactQueryProvider";
-import { worker } from "@/mocks/browser";
+import { ensureMockWorkerReady } from "@/mocks/browser";
 import "@/index.css";
 
 async function bootstrap() {
   try {
-    await worker.start({ onUnhandledFrame: 'bypass' });
+    await ensureMockWorkerReady();
   } catch (err) {
     console.warn("MSW failed to start:", err);
   }

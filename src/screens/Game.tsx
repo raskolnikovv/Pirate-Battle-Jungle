@@ -5,6 +5,8 @@ import { PauseDialog } from "@/components/PauseDialog";
 import { NavButton } from "@/components/NavButton";
 import type { GameResultPayload, ScreenName } from "@/app/navigationTypes";
 import { HUD_ASSET_MANIFEST } from "@/game/assets/hudAssets";
+import { DEFAULT_GAME_CONFIG } from "@/config/gameConfig";
+import { loadGameOptions } from "@/config/gameOptions";
 
 interface GameProps {
   onNavigate: (screen: ScreenName, payload?: GameResultPayload) => void;
@@ -22,6 +24,8 @@ const headerStyle: CSSProperties = {
 };
 
 export function Game({ onNavigate }: GameProps) {
+  // A fresh screen mount means a new match; never reread storage during gameplay.
+  const [matchConfig] = useState(() => ({ ...DEFAULT_GAME_CONFIG, ...loadGameOptions() }));
   const [hud, setHud] = useState<GameHudSnapshot | null>(null);
   const gameControlsRef = useRef<GameCanvasControls>(null);
   const matchLabel = !hud ? "Loading" : hud.status === "running" ? "Playing"
@@ -92,7 +96,7 @@ export function Game({ onNavigate }: GameProps) {
           padding: 16,
         }}
       >
-        <GameCanvas ref={gameControlsRef} onHudChange={setHud} />
+        <GameCanvas config={matchConfig} ref={gameControlsRef} onHudChange={setHud} />
       </main>
       <section className="match-controls" aria-labelledby="keyboard-controls-title">
         <h2 id="keyboard-controls-title">Keyboard controls</h2>

@@ -144,3 +144,43 @@ table {
   background: #1e293b;
   font-family: inherit;
 }
+
+.options-form {
+  display: grid;
+  gap: 20px;
+}
+
+.options-field {
+  display: grid;
+  gap: 8px;
+}
+
+.options-field label {
+  font-weight: 600;
+}
+
+.options-field input {
+  width: 100%;
+  max-width: 240px;
+  padding: 10px 12px;
+  border: 1px solid #94a3b8;
+  border-radius: 6px;
+  background: #334155;
+  color: #f8fafc;
+  font-size: 16px;
+}
+
+.options-field input:focus-visible {
+  outline: 3px solid #fbbf24;
+  outline-offset: 3px;
+}
+
+.options-error {
+  color: #fecaca;
+}
+
+.options-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}

@@ -1,4 +1,6 @@
 export const SESSION_DURATION_LIMITS = { min: 60, max: 180 } as const;
+// Up to one spawn attempt/second; at least four attempts in a 60-second match.
+export const ENEMY_SPAWN_INTERVAL_LIMITS = { min: 1, max: 15 } as const;
 
 export interface WeaponCooldowns {
   primary: number;

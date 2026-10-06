@@ -10,7 +10,7 @@ A arquitetura planejada separa a interface e navegação React da simulação e 
 
 Já existem telas de menu, opções, jogo, resultado, ranking e histórico; navegação local entre elas; endpoints e respostas simuladas para ranking, histórico e envio de partida; e um teste E2E básico. `GameCanvas` inicializa e destrói uma aplicação PixiJS, e `GameLoop` tem uma estrutura de timestep fixo.
 
-A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← e D/→. Space dispara pela proa; Q/E lançam três balas paralelas. Chaser e Shooter surgem periodicamente com seed e posições validadas. A partida usa countdown da simulação, padrão 120 s; ao expirar, congela o gameplay e mantém a arena visível. Pontuação autoritativa soma 1 por inimigo eliminado por projétil do jogador; autodestruição não pontua. HP zero encerra por defeated e congela o gameplay. HUD React usa painéis/ícones oficiais e lista semântica para pontos, HP, tempo MM:SS e status reais por snapshots; comandos aparecem em legenda com teclas identificadas; Pixi mostra barras oficiais acima de todos os navios. Pausa manual e automática por blur/aba oculta congela a simulação e exige Resume explícito. Transição automática para resultado, sons e integração de gameplay com API continuam pendentes.
+A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← e D/→. Space dispara pela proa; Q/E lançam três balas paralelas. Chaser e Shooter surgem periodicamente com seed e posições validadas. A partida usa countdown da simulação, padrão 120 s; ao expirar, congela o gameplay e mantém a arena visível. Pontuação autoritativa soma 1 por inimigo eliminado por projétil do jogador; autodestruição não pontua. HP zero encerra por defeated e congela o gameplay. HUD React usa painéis/ícones oficiais e lista semântica para pontos, HP, tempo MM:SS e status reais por snapshots; comandos aparecem em legenda com teclas identificadas; Pixi mostra barras oficiais acima de todos os navios. Pausa manual e automática por blur/aba oculta congela a simulação e exige Resume explícito. Options salva duração 60–180 s e intervalo de spawn 1–15 s localmente; novas partidas usam valores salvos. Transição automática para resultado, sons e integração de gameplay com API continuam pendentes.
 
 ## 2. Como a arquitetura funciona
 
@@ -22,7 +22,7 @@ A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← 
 - **GameRenderer:** repete água, compõe ilhas e desenha jogador, Chaser, Shooter e balas de ambas as equipes. Mapas por ID reutilizam sprites e destroem os removidos. Desenha barras de vida oficiais acima dos navios, sem girá-las. Não calcula IA, colisão nem dano. Debug opcional desenha os colliders amarelos dos inimigos.
 - **InputManager:** captura W/↑, A/←, D/→, Space, Q e E enquanto a partida está montada; devolve um snapshot para a simulação. Previne o comportamento padrão dessas teclas e remove listeners/reseta o input ao pausar ou destruir. Repetições de keydown não reativam teclas antigas após Resume.
 - **Sistemas de gameplay:** `MovementSystem` move navios/balas; `CollisionSystem` detecta impactos; `CombatSystem` aplica dano/armas e pontua somente golpes fatais de projéteis do jogador. `SpawnSystem` controla countdown, PRNG e IDs, valida posições e chama factories. Não contém IA.
-- **GameConfig:** inclui dimensões lógicas da arena e limite da nave. `Game.start(config)` copia os valores ao iniciar. Factories recebem valores explicitamente; nenhuma entidade busca secretamente `DEFAULT_GAME_CONFIG`.
+- **GameConfig:** inclui dimensões lógicas da arena e limite da nave. `Game.start(config)` copia os valores ao iniciar. Options persiste somente sessionDuration e enemySpawnInterval, derivados do mesmo GameConfig. A tela Game lê uma vez por montagem; start copia o snapshot. Factories recebem valores explicitamente; nenhuma entidade busca secretamente `DEFAULT_GAME_CONFIG`.
 - **Axios:** cliente HTTP configurado com base `/api` e timeout de 10 segundos. As funções de endpoints usam esse cliente para ranking, histórico e submissão.
 - **TanStack Query:** hooks `useRanking` e `useHistory` consultam as telas e armazenam os resultados em cache. `useSubmitMatch` existe e invalida as consultas após sucesso, mas ainda não é chamado por uma tela.
 - **MSW:** em desenvolvimento, `main.tsx` inicia o worker no navegador; handlers interceptam ranking/histórico e devolvem fixtures paginadas, e o POST de partidas devolve um resultado montado a partir do corpo recebido. Isso não é um backend persistente.
@@ -205,6 +205,16 @@ Registro da decisão do marco #4. No marco #5, o teste foi ampliado para retorna
 **Alternativas possíveis:** só desabilitar input deixaria inimigos e tempo avançarem. Um boolean React separado criaria duas fontes de lifecycle; manter RAF ativo durante pausa seria possível, mas desnecessário para cena estática.
 
 **Como eu explicaria isso em uma entrevista:** “Pausar para o relógio da simulação, não apenas o teclado. Resume reinicia o relógio sem recuperar o período parado.”
+
+### Opções persistidas são um subconjunto do GameConfig
+
+**O que foi decidido:** GameOptions é Pick<GameConfig, sessionDuration | enemySpawnInterval>; gameOptions.ts centraliza validação e localStorage. A tela Game lê uma vez ao montar e passa config estável ao canvas.
+
+**Por que fizemos assim:** defaults continuam no GameConfig, sem configuração paralela ou leitura contínua do storage. O jogo copia seus parâmetros no start e mantém a partida isolada das alterações seguintes.
+
+**Alternativas possíveis:** manter tudo no App exigiria propagar estado sem necessidade; persistir o GameConfig inteiro permitiria dados antigos alterarem parâmetros não expostos ao usuário.
+
+**Como eu explicaria isso em uma entrevista:** “Salvo só as duas opções permitidas. Cada partida lê uma vez e usa uma cópia; salvar depois só muda a próxima.”
 
 ## 4. Diário de implementação
 
@@ -887,7 +897,64 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 
 **Limitações:** sem teste manual no navegador/leitor de tela nesta tarefa. Painéis seguem cabeçalho existente, sem reprodução integral da referência. Em viewports pequenos o conteúdo pode exigir rolagem, mantendo a arena em proporção; controles de toque continuam fora deste marco. Result/API permanecem pendentes.
 
+### Etapa 16 — Options funcional e persistente
+
+**Status:** Concluído
+
+**Responsável pela implementação:** Colaborativo. Requisitos e estratégia acordados com o usuário; código implementado pelo Codex.
+
+**O que foi implementado:** formulário em inglês com Game session time e Enemy spawn time, Save explícito, validação acessível, persistência local e aplicação real às novas partidas.
+
+**Conformidade original:** INSTRUCOES.md lido antes da implementação. Duração 60–180 s, intervalo positivo com limites documentados, persistência após refresh e snapshot por partida foram respeitados. Nenhum conflito encontrado; nenhum commit realizado. Placeholders de áudio/dificuldade/fullscreen foram removidos da tela porque não tinham integração e não eram as duas opções exigidas; nenhuma mecânica correspondente foi alterada.
+
+**Arquivos principais envolvidos:** src/config/gameConfig.ts; src/config/gameOptions.ts (novo); src/screens/Options.tsx; src/screens/Game.tsx; src/index.css; este diário. App, Result, GameCanvas, Game core e SpawnSystem não precisaram de alterações.
+
+**Como funciona:**
+
+- Game session time aceita número finito entre 60 e 180 s inclusive. Enemy spawn time aceita número finito entre 1 e 15 s inclusive. Campos vazios, NaN, infinito, negativos e valores fora de faixa são rejeitados; frações são aceitas porque a simulação usa segundos fracionários (step=any), sem requisito original de inteiros.
+- ENEMY_SPAWN_INTERVAL_LIMITS fica junto de SESSION_DURATION_LIMITS no GameConfig. Limite 1 evita mais de uma tentativa por segundo (até 180 em três minutos), moderando densidade sem alterar regras. Máximo 15 permite quatro tentativas na partida mínima de 60 s. Padrão 3 s está no intervalo. Esses números não garantem spawn bem-sucedido ou quota de cada tipo: posições continuam validadas e distribuição continua probabilística existente.
+- GameOptions é subconjunto tipado do GameConfig; defaults são extraídos de DEFAULT_GAME_CONFIG, sem duplicar parâmetros. validateGameOptions é reutilizado no formulário e antes de salvar; leitura usa as mesmas faixas. Os limites governam opções salvas; validação interna de SpawnSystem continua exigindo intervalo positivo, sem mudar comportamento de simulação para configurações programáticas.
+- Draft usa strings para permitir editar/apagar campos sem converter imediatamente para zero. Save transforma valores em números e valida ambos antes de gravar. noValidate permite mensagens próprias; required/min/max continuam descrevendo restrições dos inputs. Erro liga aria-invalid/aria-describedby, role=alert e foco no primeiro campo inválido.
+- Chave localStorage pirate-battle:options:v1 guarda JSON com version:1 e apenas sessionDuration/enemySpawnInterval. A gravação acontece somente em Save. Back descarta alterações não salvas. Mensagem Settings saved informa que valores valem para novas partidas; editar limpa confirmação antiga.
+- loadGameOptions valida unknown: ausência, JSON corrompido, null/array/tipo incorreto, versão desconhecida ou acesso negado usam defaults 120/3. Em objeto v1 reconhecido, cada campo inválido volta ao próprio default e campo válido é preservado. Strings numéricas não são aceitas como números persistidos; campos extras são ignorados. Dados ruins não são escritos durante leitura.
+- Se setItem falha (quota/permissão), aparece erro e nenhum sucesso é indicado; opções anteriores não são substituídas. Se storage não está acessível, novas partidas continuam com defaults. Não existe fallback persistente alternativo nem promessa falsa de salvar após refresh.
+- Na montagem da tela Game, lazy useState lê opções e combina com DEFAULT_GAME_CONFIG uma única vez. Essa referência estável entra em GameCanvas.config; updates do HUD não mudam a config nem reinicializam Pixi. Game.start já copia os objetos aninhados e entrega snapshot ao SpawnSystem. Não se consulta storage durante os frames, pause ou resume.
+- Main Menu → Start e Result → Play Again navegam para Game e montam tela nova, capturando opções salvas atuais. O fluxo existente desmonta a partida ao sair; não há restart ativo na mesma tela. Strict Mode pode repetir leitura pura/inicialização em desenvolvimento, sem gravação ou alteração de opções. Modificar storage em outra aba durante partida não altera snapshot ativo; a próxima montagem lê valores novos.
+
+**Por que foi feito dessa forma:** preserva fluxo atual e mantém configuração tipada única. Persistência é fronteira de dados não confiáveis; validar impede crash na partida. Draft não é configuração ativa: somente Save grava, e somente nova partida captura valores.
+
+**O que eu preciso entender:** código feito pelo Codex em colaboração. Revisar Pick, unknown/narrowing, validação de números finitos, strings de formulário, localStorage síncrono com try/catch, versão de schema, lazy useState, identidade de config e snapshot em duas etapas (tela e simulação).
+
+**Como testar manualmente:**
+
+1. Options: conferir defaults 120 e 3; salvar 60 e 5. Ver mensagem de sucesso, voltar ao menu e iniciar: HUD começa 01:00 e primeira tentativa de spawn ocorre após 5 s ativos.
+2. Refresh, abrir Options: valores 60/5 permanecem. Salvar 180/1 e iniciar outra: HUD 03:00 e tentativas a cada 1 s. Confirmar 15 s como máximo permitido.
+3. Save com duração vazia/59/181 ou spawn vazio/0/negativo/0.5/16: mensagem por campo, foco no primeiro erro, nenhuma gravação. Testar duração 60/180 e spawn 1/15; fração válida como 2.5 deve funcionar.
+4. Editar sem Save e clicar Back; reabrir: valores salvos anteriores continuam. Tab e Enter navegam/submetem formulário; foco dos inputs e botões é visível.
+5. DevTools/Application: chave pirate-battle:options:v1. Testar JSON inválido, null, array, version diferente ou valores do tipo string/out of range; refresh e Start não devem quebrar. Campo v1 válido permanece, campo inválido usa default. Remover chave restaura 120/3.
+6. Enquanto jogo está ativo, alterar chave via DevTools/outra aba: duração/intervalo da partida atual não mudam. Ao entrar novamente/Play Again, valores salvos novos passam a valer.
+7. Pause/Resume preserva duração e intervalo restantes, sem reler opções. Após fim ou Quit, Play Again usa nova montagem e reset existente de HP, score, timer e entidades.
+8. Simular bloqueio de storage/quota: Save deve avisar erro sem sucesso; leitura inacessível não deve impedir partida com defaults.
+
+**Possíveis perguntas de entrevista:**
+
+- Onde ficam defaults e opções? “Defaults no GameConfig; salvo apenas Pick das duas opções numa chave versionada.”
+- Por que draft é string? “Permite campo vazio durante edição; converto e valido só ao salvar.”
+- E JSON corrompido? “Leitura usa try/catch e valida tipos/faixas; dados ruins viram defaults seguros.”
+- Por que não atualizar partida ativa? “Balanceamento é snapshot do start; opções novas valem para outra partida.”
+- Quando Play Again lê opções? “Ao montar novamente a tela Game, antes de inicializar o canvas e o Game.”
+- Por que 1–15 segundos? “Limita densidade e mantém oportunidades de spawn mesmo numa sessão de 60 segundos; o padrão 3 permanece.”
+
+**Validação:** revisão conferiu fluxo Menu/Result → montagem Game, config estável, snapshot existente, validação de formulário/storage e fallback. Typecheck, lint e build passaram via npm-cli instalado. Launcher npm quebrado é preexistente; build mantém aviso de chunk > 500 kB (principal 998,63 kB minificado). Nenhum teste manual de navegador ou E2E executado nesta tarefa.
+
+**Limitações:** se armazenamento local for bloqueado, Save falha explicitamente e leitura usa defaults. Sem sincronização visual automática de Options entre abas; reabrir lê dados atuais. Configuração exposta somente para duração/intervalo; não altera probabilidades ou outros parâmetros. Resultado real/API continuam pendentes.
+
 ## 5. Conceitos importantes para estudar
+
+- **Draft vs opção salva:** edição local do formulário só passa a valer após Save; gameplay usa snapshot próprio.
+- **Persistência não confiável:** JSON parse não garante formato; tratar como unknown e validar tipos/faixas antes de usar.
+- **Lazy useState:** lê opções ao montar a tela e mantém identidade da config durante os renders seguintes.
+- **Schema versionado:** versão identifica o formato do storage; formato desconhecido volta a defaults seguros.
 
 - **Lista de descrição:** dl reúne pares dt (rótulo) e dd (valor), úteis para estatísticas do jogo.
 - **Imagem decorativa:** alt vazio evita leitura redundante quando texto já explica o ícone.
@@ -949,6 +1016,9 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 
 ## 6. Perguntas que eu deveria conseguir responder
 
+- **Como opções sobrevivem refresh?** “Save grava duas opções validadas em localStorage versionado; nova tela lê e valida antes de usar.”
+- **Por que partida ativa não muda?** “Tela captura config uma vez e Game.start copia; nenhum update consulta storage.”
+
 - **Como o HUD é acessível fora do canvas?** “Valores ficam em dl/dt/dd no DOM e vêm do mesmo snapshot apresentado visualmente.”
 - **Por que não anunciar cada segundo?** “Interromperia a leitura; timer é consultável, enquanto só o estado é anunciado automaticamente.”
 
@@ -994,6 +1064,8 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 - **O que os testes automatizados garantem hoje?** “A abertura do menu e alguns caminhos de navegação. Não garantem que o jogo seja jogável.”
 
 ## 7. Pontos que ainda não domino
+
+- **Options implementado pelo Codex em colaboração:** revisar validação de unknown, try/catch de storage, draft strings, sucesso/erro acessível, limites de spawn e momento da captura da configuração no Play Again.
 
 - **HUD semântico implementado pelo Codex em colaboração:** estudar listas de descrição, alt vazio, live regions e revisar manualmente comportamento com leitor de tela; checks estáticos não garantem experiência assistiva.
 

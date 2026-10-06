@@ -1,105 +1,84 @@
-import type { CSSProperties } from "react";
-import { NavButton } from "@/components/NavButton";
-import { ScreenLayout } from "@/components/ScreenLayout";
-import type { ScreenName } from "@/app/navigationTypes";
+import { useRef, useState, type FormEvent } from 'react';
+import { ScreenLayout } from '@/components/ScreenLayout';
+import type { ScreenName } from '@/app/navigationTypes';
+import { ENEMY_SPAWN_INTERVAL_LIMITS, SESSION_DURATION_LIMITS } from '@/config/gameConfig';
+import { loadGameOptions, saveGameOptions, validateGameOptions, type GameOptionsErrors } from '@/config/gameOptions';
 
 interface OptionsProps {
   onNavigate: (screen: ScreenName) => void;
 }
 
-const sectionStyle: CSSProperties = {
-  backgroundColor: "rgba(51, 65, 85, 0.5)",
-  borderRadius: 12,
-  padding: 20,
-  marginBottom: 24,
-};
-
-const h2Style: CSSProperties = {
-  fontSize: 20,
-  fontWeight: 600,
-  marginBottom: 12,
-  color: "#fcd34d",
-};
-
-const rowStyle: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  padding: "8px 0",
-};
-
-const selectStyle: CSSProperties = {
-  backgroundColor: "#475569",
-  color: "#f8fafc",
-  border: "none",
-  borderRadius: 6,
-  padding: "6px 12px",
-};
-
 export function Options({ onNavigate }: OptionsProps) {
+  const [draft, setDraft] = useState(() => {
+    const saved = loadGameOptions();
+    return { sessionDuration: String(saved.sessionDuration), enemySpawnInterval: String(saved.enemySpawnInterval) };
+  });
+  const [errors, setErrors] = useState<GameOptionsErrors>({});
+  const [message, setMessage] = useState('');
+  const [storageError, setStorageError] = useState('');
+  const sessionRef = useRef<HTMLInputElement>(null);
+  const spawnRef = useRef<HTMLInputElement>(null);
+
+  const handleSave = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const options = {
+      sessionDuration: draft.sessionDuration.trim() ? Number(draft.sessionDuration) : NaN,
+      enemySpawnInterval: draft.enemySpawnInterval.trim() ? Number(draft.enemySpawnInterval) : NaN,
+    };
+    const nextErrors = validateGameOptions(options);
+    setErrors(nextErrors);
+    setMessage('');
+    setStorageError('');
+    if (Object.keys(nextErrors).length > 0) {
+      (nextErrors.sessionDuration ? sessionRef : spawnRef).current?.focus();
+      return;
+    }
+    if (!saveGameOptions(options)) {
+      setStorageError('Unable to save settings in this browser. Previous settings remain unchanged.');
+      return;
+    }
+    setMessage('Settings saved. They will apply to new matches.');
+  };
+
   return (
     <ScreenLayout title="Options">
-      <div>
-        <div style={sectionStyle}>
-          <h2 style={h2Style}>Audio</h2>
-          <div>
-            <label style={rowStyle}>
-              <span>Master Volume</span>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                defaultValue={70}
-                style={{ width: 192 }}
-              />
-            </label>
-            <label style={rowStyle}>
-              <span>Music</span>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                defaultValue={50}
-                style={{ width: 192 }}
-              />
-            </label>
-            <label style={rowStyle}>
-              <span>SFX</span>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                defaultValue={80}
-                style={{ width: 192 }}
-              />
-            </label>
-          </div>
+      <form className="options-form" noValidate onSubmit={handleSave}>
+        <p>Times are in seconds. Saved settings apply only to new matches.</p>
+        <div className="options-field">
+          <label htmlFor="session-time">Game session time</label>
+          <input ref={sessionRef} id="session-time" type="number" step="any"
+            min={SESSION_DURATION_LIMITS.min} max={SESSION_DURATION_LIMITS.max} required
+            value={draft.sessionDuration} aria-invalid={Boolean(errors.sessionDuration)}
+            aria-describedby={`session-hint${errors.sessionDuration ? ' session-error' : ''}`}
+            onChange={(event) => {
+              setDraft({ ...draft, sessionDuration: event.target.value });
+              setErrors({ ...errors, sessionDuration: undefined });
+              setMessage(''); setStorageError('');
+            }} />
+          <p id="session-hint">Between {SESSION_DURATION_LIMITS.min} and {SESSION_DURATION_LIMITS.max} seconds.</p>
+          {errors.sessionDuration && <p id="session-error" className="options-error" role="alert">{errors.sessionDuration}</p>}
         </div>
-
-        <div style={sectionStyle}>
-          <h2 style={h2Style}>Gameplay</h2>
-          <div>
-            <label style={rowStyle}>
-              <span>Difficulty</span>
-              <select defaultValue="normal" style={selectStyle}>
-                <option value="easy">Easy</option>
-                <option value="normal">Normal</option>
-                <option value="hard">Hard</option>
-              </select>
-            </label>
-            <label style={rowStyle}>
-              <span>Fullscreen</span>
-              <input type="checkbox" defaultChecked />
-            </label>
-          </div>
+        <div className="options-field">
+          <label htmlFor="spawn-time">Enemy spawn time</label>
+          <input ref={spawnRef} id="spawn-time" type="number" step="any"
+            min={ENEMY_SPAWN_INTERVAL_LIMITS.min} max={ENEMY_SPAWN_INTERVAL_LIMITS.max} required
+            value={draft.enemySpawnInterval} aria-invalid={Boolean(errors.enemySpawnInterval)}
+            aria-describedby={`spawn-hint${errors.enemySpawnInterval ? ' spawn-error' : ''}`}
+            onChange={(event) => {
+              setDraft({ ...draft, enemySpawnInterval: event.target.value });
+              setErrors({ ...errors, enemySpawnInterval: undefined });
+              setMessage(''); setStorageError('');
+            }} />
+          <p id="spawn-hint">Between {ENEMY_SPAWN_INTERVAL_LIMITS.min} and {ENEMY_SPAWN_INTERVAL_LIMITS.max} seconds. Lower values mean more frequent spawn attempts.</p>
+          {errors.enemySpawnInterval && <p id="spawn-error" className="options-error" role="alert">{errors.enemySpawnInterval}</p>}
         </div>
-
-        <div
-          style={{ display: "flex", justifyContent: "center", paddingTop: 16 }}
-        >
-          <NavButton onClick={() => onNavigate("main-menu")}>Back</NavButton>
+        <p role="status" aria-atomic="true">{message}</p>
+        {storageError && <p className="options-error" role="alert">{storageError}</p>}
+        <div className="options-actions">
+          <button className="pause-action" type="submit">Save</button>
+          <button className="pause-action" type="button" onClick={() => onNavigate('main-menu')}>Back</button>
         </div>
-      </div>
+      </form>
     </ScreenLayout>
   );
 }

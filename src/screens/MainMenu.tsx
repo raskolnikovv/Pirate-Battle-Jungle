@@ -2,6 +2,7 @@ import { NavButton } from "@/components/NavButton";
 import { ScreenLayout } from "@/components/ScreenLayout";
 import type { ScreenName } from "@/app/navigationTypes";
 import { PendingSubmissions } from '@/components/PendingSubmissions';
+import { NetworkScenarioControls } from '@/components/NetworkScenarioControls';
 
 interface MainMenuProps {
   onNavigate: (screen: ScreenName) => void;
@@ -32,7 +33,7 @@ export function MainMenu({ onNavigate }: MainMenuProps) {
         </p>
         <NavButton onClick={() => onNavigate("game")}>Start Game</NavButton>
         <NavButton onClick={() => onNavigate("ranking")} variant="secondary">
-          Leaderboard
+          Ranking
         </NavButton>
         <NavButton
           onClick={() => onNavigate("match-history")}
@@ -44,6 +45,7 @@ export function MainMenu({ onNavigate }: MainMenuProps) {
           Options
         </NavButton>
         <PendingSubmissions />
+        <NetworkScenarioControls />
       </div>
     </ScreenLayout>
   );

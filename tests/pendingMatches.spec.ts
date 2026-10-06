@@ -106,7 +106,7 @@ test('already accepted match with lost response retries without duplication', as
   await expect(page.getByText('Registration: Submitted', { exact: true })).toBeVisible();
   expect(await pendingRecords(page)).toEqual([]);
   expect(await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!).records, confirmedKey)).toEqual(records);
-  await page.getByRole('button', { name: 'Leaderboard', exact: true }).click();
+  await page.getByRole('button', { name: 'Ranking', exact: true }).click();
   await expect(page.getByText('Page 1 of 3 · 12 results · 5 per page', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'Match History', exact: true }).click();

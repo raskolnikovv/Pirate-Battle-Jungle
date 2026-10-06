@@ -40,7 +40,7 @@ export function useRanking(
 ) {
   return useQuery({
     queryKey: queryKeys.ranking(params),
-    queryFn: () => getRanking(params),
+    queryFn: ({ signal }) => getRanking(params, signal),
     refetchOnMount: 'always',
   });
 }
@@ -50,7 +50,7 @@ export function useHistory(
 ) {
   return useQuery({
     queryKey: queryKeys.history(params),
-    queryFn: () => getHistory(params),
+    queryFn: ({ signal }) => getHistory(params, signal),
     refetchOnMount: 'always',
   });
 }
@@ -59,6 +59,7 @@ export function useSubmitMatch() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    mutationKey: queryKeys.matches,
     mutationFn: attemptSubmission,
     retry: false,
     onMutate: (payload) => {

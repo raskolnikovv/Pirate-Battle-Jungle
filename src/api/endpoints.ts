@@ -13,20 +13,22 @@ export type { SubmitMatchRequest } from './matchContracts';
 
 export async function getRanking(
   params: RankingParams,
+  signal?: AbortSignal,
 ): Promise<PaginatedResponse<RankingEntry>> {
   const { data } = await httpClient.get<unknown>(
     '/ranking',
-    { params },
+    { params, signal },
   );
   return readPaginatedResponse(data, isRankingEntry);
 }
 
 export async function getHistory(
   params: PaginationParams = { page: 1, pageSize: 20 },
+  signal?: AbortSignal,
 ): Promise<PaginatedResponse<MatchHistoryRecord>> {
   const { data } = await httpClient.get<unknown>(
     '/history',
-    { params: { ...params, playerId: LOCAL_PLAYER.id } },
+    { params: { ...params, playerId: LOCAL_PLAYER.id }, signal },
   );
   return readPaginatedResponse(data, isHistoryRecord);
 }

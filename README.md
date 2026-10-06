@@ -85,10 +85,56 @@ This separation ensures React does NOT re-render 60 times per second and lets a 
 
 ### Mocked APIs
 
-MSW browser worker starts automatically in development. Handlers:
+MSW browser worker starts automatically in development and production. Handlers:
 
-- `GET /api/ranking?page&pageSize` → paginated leaderboard fixtures
-- `GET /api/history?page&pageSize` → paginated match history fixtures
-- `POST /api/matches` → echoes back a `MatchResult`
+- `GET /api/ranking?page&pageSize&configKey` → paginated matches with the same full configuration
+- `GET /api/history?page&pageSize&playerId` → paginated player matches, newest first
+- `POST /api/matches` → persist a completed match; repeat IDs return the existing identical record or conflict with 409
 
-When the real backend is ready, remove the `worker.start()` block in `src/main.tsx` and set a real `VITE_API_BASE_URL` on the Axios client.
+The current API is simulated entirely in the browser. Confirmed records and pending
+submissions persist locally; retries keep the original match ID and configuration.
+
+## Demo network scenarios
+
+MSW runs in development and production. On Main Menu or Match Results, expand
+**Development / demo network scenarios** and select a scenario and target endpoint.
+Normal behavior is **Success**. The selection is stored under
+`pirate-battle:network-scenario:v1`; refresh preserves it and restarts request counters.
+Invalid or unavailable scenario storage falls back to Success.
+
+Available scenarios: Success, Empty lists, Multiple pages, Slow responses,
+Variable latency, Out-of-order responses, Timeout before confirmation,
+Connection error, HTTP 422, HTTP 500, Ranking failure only, History failure only,
+Timeout after confirmation, and API unavailable at match end.
+
+- Target limits a scenario to Ranking, Match History, Match submission, or all.
+  Empty lists and Multiple pages affect GETs only. Endpoint-specific failures
+  affect only their named GET. Timeout after confirmation affects POST only.
+- Slow uses 1,500ms. Variable latency repeats 150/700/300/100ms per endpoint.
+  Out-of-order alternates 1,500/100ms, so concurrent requests finish later-first.
+  Selecting a scenario restarts counters. Query keys retain configuration/player/page;
+  TanStack Query cancellation reaches Axios when leaving a screen.
+- Multiple pages adds 15 deterministic response-only matches, never persisted.
+  Ranking fixtures use the requested valid configuration; History fixtures use defaults.
+- Axios times out at 10 seconds; timeout scenarios delay 11 seconds. Before-confirmation
+  timeout never accepts a new POST. After-confirmation timeout saves first, then delays.
+  Choose Success and **Retry registration** to recover the same ID without duplication.
+- For an outage demo, select API unavailable, complete a match, observe its pending status,
+  and start another match or return to Main Menu. Choose Success and retry explicitly.
+- **Reset network demo intentionally deletes all confirmed and pending matches**, restores
+  initial fixtures, Success, counters and registration/query state. Options and the last
+  local result remain. The result then has no confirmed registration in this session.
+  Reset/selection is disabled during submissions. Blocked storage reports incomplete reset;
+  this is not a transactional reset across browser storage keys or tabs.
+- `/api/mock-status` is always healthy: simulated API failures do not disable MSW transport
+  recovery or gameplay. GET retries retain the existing TanStack Query policy; POST retries
+  are explicit. Slow/timeout delays are asynchronous and do not block the main thread.
+
+Focused runtime regression suite:
+
+```bash
+npx playwright test tests/networkScenarios.spec.ts tests/pendingMatches.spec.ts tests/confirmedMatches.spec.ts tests/ranking.spec.ts --workers=1
+```
+
+Timeout tests shorten only Axios's client timeout to 300ms; the real shared MSW scenario
+still uses 11 seconds. Concurrent ordering tests use the real shared handlers.

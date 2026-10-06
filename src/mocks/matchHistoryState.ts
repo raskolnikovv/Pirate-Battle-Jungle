@@ -19,8 +19,8 @@ type RegistrationResult =
   | { status: 'conflict' }
   | { status: 'storage_unavailable' };
 
-function getAllMatches(): MatchHistoryRecord[] {
-  const matches = new Map(fixtures
+function getAllMatches(extra: MatchHistoryRecord[] = []): MatchHistoryRecord[] {
+  const matches = new Map([...fixtures, ...extra]
     .map((record) => [record.matchId, record]));
   for (const record of confirmedMatches.values()) matches.set(record.matchId, record);
   return [...matches.values()];
@@ -43,15 +43,15 @@ export function resetConfirmedMockMatches(): boolean {
   return true;
 }
 
-export function getMockHistory(playerId: string): MatchHistoryRecord[] {
-  return getAllMatches()
+export function getMockHistory(playerId: string, extra: MatchHistoryRecord[] = []): MatchHistoryRecord[] {
+  return getAllMatches(extra)
     .filter((record) => record.playerId === playerId)
     .sort((a, b) => Date.parse(b.completedAt) - Date.parse(a.completedAt)
       || (a.matchId < b.matchId ? -1 : a.matchId > b.matchId ? 1 : 0));
 }
 
-export function getMockRanking(configKey: string): RankingEntry[] {
-  return getAllMatches()
+export function getMockRanking(configKey: string, extra: MatchHistoryRecord[] = []): RankingEntry[] {
+  return getAllMatches(extra)
     .filter((record) => getGameConfigKey(record.config) === configKey)
     .sort((a, b) => b.score - a.score
       || a.durationSeconds - b.durationSeconds

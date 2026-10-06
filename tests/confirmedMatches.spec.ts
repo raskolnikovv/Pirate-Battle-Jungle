@@ -69,7 +69,7 @@ test('confirmed matches survive reload and duplicate submissions return the same
   expect(ranking.items.filter((item: MatchHistoryRecord) => item.matchId === record.matchId)).toHaveLength(1);
   const stored = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), storageKey);
   expect(stored).toEqual({ version: 1, records: [record] });
-  await page.getByRole('button', { name: 'Leaderboard', exact: true }).click();
+  await page.getByRole('button', { name: 'Ranking', exact: true }).click();
   await expect(page.getByText('Page 1 of 3 · 12 results · 5 per page', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'Match History', exact: true }).click();

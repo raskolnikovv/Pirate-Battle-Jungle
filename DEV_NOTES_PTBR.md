@@ -1291,6 +1291,71 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 
 **Verificações da etapa 24:** 28 testes Chromium passaram: 13 focados em pendências/retry e 15 regressões de confirmados/ranking/MSW. Cobrem persistência antes de POST, refresh sem envio automático, sucesso/limpeza, resposta perdida após aceitação, várias pendências, outra partida jogável, conflito, cliques repetidos, receipt incompatível, falha de gravação/limpeza de storage, abandono e corrupção. Conclusões são aceleradas só pela instrumentação; não representam teste completo de combate. Typecheck, lint e build passaram usando npm-cli da instalação Node. Corrigi a inferência de setQueryData usando updater para o novo status failed com message e repeti typecheck. Build mantém aviso de chunk acima de 500 kB (principal 1.014,74 kB); runner mantém aviso NO_COLOR/FORCE_COLOR. Artefatos de build/teste regenerados. Sem commit.
 
+### Etapa 25 — Cenários de rede configuráveis no MSW
+
+**Status:** Concluído
+
+**Responsável pela implementação:** Colaborativo — código e testes pelo Codex, revisão/teste manual pelo desenvolvedor.
+
+**O que foi implementado:** Modelo tipado central com cenário + endpoint alvo; seletor de demonstração no Menu e Result; respostas assíncronas, falhas reproduzíveis, fixtures temporárias e reset explícito. Foram seguidas as instruções originais de `INSTRUCOES.md`, conforme orientação do desenvolvedor; nenhum gameplay foi alterado.
+
+**Arquivos principais envolvidos:** `mocks/networkScenarios.ts`, `mocks/scenarioFixtures.ts`, `mocks/handlers.ts`, `mocks/matchHistoryState.ts`, `components/NetworkScenarioControls.tsx`, `screens/MainMenu.tsx`, `screens/Result.tsx`, `api/endpoints.ts`, `hooks/useApi.ts`, `storage/pendingMatchesStorage.ts`, `tests/networkScenarios.spec.ts` e `README.md`.
+
+**Como funciona:** React escolhe um cenário, mas continua consultando dados por TanStack Query → Axios → MSW. Os handlers capturam o cenário uma vez por requisição; mudanças posteriores não transformam uma resposta em andamento. O probe de interceptação `/api/mock-status` fica fora dos cenários para que recuperação do worker não confunda uma falha intencional da API com perda de interceptação.
+
+Cenários disponíveis: sucesso; listas vazias; múltiplas páginas; lentidão; latência variável; respostas fora de ordem; timeout antes da confirmação; erro de conexão; HTTP 422; HTTP 500; falha apenas do Ranking; falha apenas do History; timeout depois da confirmação; indisponibilidade ao encerrar a partida. O alvo pode ser todos, Ranking, History ou POST. Vazios/múltiplas páginas só afetam consultas; falhas específicas só afetam o GET correspondente; timeout pós-confirmação só afeta POST.
+
+**Por que foi feito dessa forma:** Um catálogo evita flags dispersas e reaproveita handlers, validação, contratos e paginação existentes. O erro de conexão usa `HttpResponse.error()`; HTTP 422/500/503 são respostas HTTP, e não substituem o conflito real 409. As telas continuam usando seus estados de loading, vazio, erro e registro pendente.
+
+**Determinismo:** Contadores independentes por endpoint. Lentidão: 1.500ms. Latência variável: sequência repetida 150/700/300/100ms. Fora de ordem: 1.500/100ms alternados; duas consultas concorrentes terminam segunda-primeira. Selecionar novamente, resetar ou recarregar reinicia contadores. Não há `Math.random()`. Cada GET calcula seu snapshot antes do atraso. Query keys continuam separando configuração/jogador/página; o AbortSignal do Query chega ao Axios para cancelar consultas ao sair da tela ou trocar o cenário. Não copiamos respostas para estado React manual.
+
+**Fixtures e dados reais:** Múltiplas páginas adiciona 15 partidas determinísticas apenas à resposta, sem escrever no storage. Ranking gera esses registros com a configuração solicitada validada, preservando filtro e ordenação existentes; History usa a configuração padrão. Listas vazias devolve paginação válida com zero itens sem apagar confirmados.
+
+**Timeout e recuperação:** Axios normal expira em 10s; MSW espera 11s. No timeout anterior à confirmação, o handler nunca registra o POST. No posterior, `registerMockMatch` aceita e persiste primeiro e só depois atrasa a resposta. O cliente mantém a pendência porque não recebeu confirmação. Voltar a Success e reenviar o mesmo payload/ID recupera o registro existente com 200 e remove a pendência, sem duplicar Ranking/History. Não existe retry automático de POST.
+
+**Seleção e reset:** Seleção versionada em `pirate-battle:network-scenario:v1`, preservada após refresh; dados inválidos/inacessíveis usam Success. Falha ao salvar avisa que o cenário vale só nesta sessão. Reset apaga intencionalmente confirmados e pendentes usando os mecanismos existentes, restaura fixtures, Success, contadores e status de registro/cache. Preserva Options e o último resultado local; esse resultado já não possui confirmação nesta sessão após reset. Seleção/reset ficam desabilitados durante mutations para impedir um POST ativo de repovoar o estado. Storage bloqueado informa reset incompleto; operações em várias chaves não são uma transação, nem há coordenação entre abas.
+
+**O que eu preciso entender:** Timeout não significa que o servidor rejeitou uma operação; estudar idempotência e resultado incerto, cancelamento versus desfazer uma operação, Query keys, snapshots de resposta, contador determinístico, useSyncExternalStore e armazenamento versionado. Esta parte foi criada com assistência do Codex e exige revisão antes de explicar em entrevista.
+
+**Como testar manualmente:**
+
+1. No Menu, expandir Development / demo network scenarios. Escolher Empty lists e abrir as duas abas; testar Target para limitar a uma delas.
+2. Escolher Multiple pages e navegar Previous/Next; voltar a Success e verificar que os registros temporários sumiram, sem perder os confirmados.
+3. Escolher Slow responses e observar Loading/Updating; testar falhas Ranking/History separadamente e confirmar acesso a Options/jogo.
+4. Escolher Timeout after confirmation, terminar uma partida e aguardar falha (~10s). Escolher Success e Retry registration: deve registrar uma única cópia e limpar a pendência. Antes de tentar novamente, refresh mantém cenário e pendência sem reenviar sozinho.
+5. Escolher API unavailable at match end, concluir partida, iniciar outra enquanto há pendência; depois Success e retry.
+6. Usar Reset network demo sabendo que remove confirmados e pendentes. Options permanece; fixture inicial retorna. A seleção continua Success após refresh.
+
+**Possíveis perguntas de entrevista:**
+
+- Por que preservar a pendência após timeout? “A resposta pode ter se perdido depois da aceitação; só removo após receber e validar a confirmação.”
+- Como evitar duplicação nessa recuperação? “Reenvio o mesmo ID e payload; o servidor retorna o registro já aceito.”
+- Como testar latência sem aleatoriedade? “Uso contadores por endpoint e uma sequência fixa, reiniciada ao selecionar ou resetar.”
+- Cancelar uma consulta desfaz o POST? “Não. Cancelamento descarta a resposta no cliente; uma operação já aceita continua confirmada no servidor.”
+- Por que a falha simulada não afeta o probe? “O probe verifica se MSW intercepta; um HTTP 500 intencional da API não significa que o worker parou.”
+
+**Validação:** 43 testes Chromium passaram (15 novos cenários + 28 regressões de Ranking, confirmados e pendências). Typecheck, lint e build passaram. Smoke adicional no build de produção verificou seletor, Ranking vazio, reset e fixtures iniciais, sem pageerrors. Aviso existente: chunk principal 1.021,54 kB minificado (>500 kB); runner informa NO_COLOR/FORCE_COLOR. A primeira rodada teve um teste de navegação falho; a repetição completa, sem edições durante o run, passou. Nenhum commit realizado.
+
+**Limitações:** Testes de timeout aceleram só o limite Axios para 300ms, mantendo o handler compartilhado em 11s; o comportamento normal permanece 10s. Contadores reiniciam após refresh, não são persistidos. Cenários são presets, sem editor de latências ou concorrência entre abas. Otimização do bundle permanece fora deste marco.
+
+### Ajuste após a etapa 25 — Terminologia Ranking
+
+**Status:** Concluído
+
+**Responsável pela implementação:** Colaborativo — ajuste pelo Codex a pedido do desenvolvedor.
+
+**O que foi implementado:** Botões do Menu/Result e título da tela passam a usar Ranking, conforme `INSTRUCOES.md`. Seletores dos testes existentes acompanham o nome acessível. Rotas, arquivos, tipos, APIs e comportamento permanecem iguais. As referências antigas neste diário descrevem a interface existente naquela etapa e foram preservadas como histórico.
+
+**Arquivos principais envolvidos:** `screens/MainMenu.tsx`, `screens/Ranking.tsx`, `screens/Result.tsx` e seletores em `tests/app.spec.ts`, `tests/confirmedMatches.spec.ts`, `tests/networkScenarios.spec.ts`, `tests/pendingMatches.spec.ts`, `tests/ranking.spec.ts`.
+
+**O que eu preciso entender:** O nome acessível de um botão é parte da interface; testes por role/name devem acompanhar mudanças no texto apresentado.
+
+**Como testar manualmente:** Verificar o botão Ranking no Menu e Result e o título Ranking ao abrir a tela.
+
+**Validação:** Typecheck, lint e build passaram. Permanece o aviso existente de chunk maior que 500 kB. Os seletores dos testes foram ajustados, sem executar Playwright nesta tarefa. Nenhum commit realizado.
+
+**Possível pergunta de entrevista:** Por que atualizar seletores dos testes? “Eles procuram o nome que o usuário e as tecnologias assistivas encontram na interface.”
+
 ## 5. Conceitos importantes para estudar
 
 - **useSyncExternalStore:** conecta um pequeno estado local externo ao React por snapshot estável e assinatura com cleanup. Aqui observa conclusões pendentes, não gameplay contínuo.
@@ -1442,6 +1507,8 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 - **O que os testes automatizados garantem hoje?** “A abertura do menu e alguns caminhos de navegação. Não garantem que o jogo seja jogável.”
 
 ## 7. Pontos que ainda não domino
+
+- **Cenários MSW implementados pelo Codex em colaboração:** revisar captura por requisição, sequência de latências, cancelamento Axios, timeout após aceitação, reset destrutivo e limites entre abas/storage. Não assumir que cancelar desfaz dados persistidos.
 
 - **Pendências e retry implementados pelo Codex em colaboração:** revisar persist-before-POST, validação de receipt, limpeza que pode falhar, coleção múltipla, status por ID, Promise compartilhada e subscribe/unsubscribe. Saber explicar os limites de storage bloqueado e concorrência entre abas.
 

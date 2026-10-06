@@ -65,3 +65,7 @@ export function addPendingMatch(payload: SubmitMatchRequest): void {
 export function removePendingMatch(matchId: string): boolean {
   return persist(snapshot.records.filter((record) => record.matchId !== matchId));
 }
+
+export function resetPendingMatches(): boolean {
+  return persist([]);
+}

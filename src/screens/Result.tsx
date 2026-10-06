@@ -4,6 +4,7 @@ import { ScreenLayout } from "@/components/ScreenLayout";
 import type { GameResultPayload, ScreenName } from "@/app/navigationTypes";
 import { useMatchRegistration } from "@/hooks/useApi";
 import { PendingSubmissions } from '@/components/PendingSubmissions';
+import { NetworkScenarioControls } from '@/components/NetworkScenarioControls';
 
 interface ResultProps {
   onNavigate: (screen: ScreenName) => void;
@@ -44,6 +45,7 @@ export function Result({ onNavigate, result, storageError = false }: ResultProps
     return <ScreenLayout title="Match Results">
       <p role="status">No completed match is available.</p>
       <PendingSubmissions />
+      <NetworkScenarioControls />
       <div style={buttonRowStyle}><NavButton onClick={() => onNavigate("main-menu")}>Main Menu</NavButton></div>
     </ScreenLayout>;
   }
@@ -112,10 +114,11 @@ export function Result({ onNavigate, result, storageError = false }: ResultProps
           {storageError && <p role="alert">Unable to save this result locally. It remains available until you reload.</p>}
         </section>
         <PendingSubmissions />
+        <NetworkScenarioControls />
         <div style={buttonRowStyle}>
           <NavButton onClick={() => onNavigate("game")}>Play Again</NavButton>
           <NavButton onClick={() => onNavigate("ranking")} variant="secondary">
-            Leaderboard
+            Ranking
           </NavButton>
           <NavButton
             onClick={() => onNavigate("main-menu")}

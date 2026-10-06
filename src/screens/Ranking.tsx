@@ -47,7 +47,7 @@ export function Ranking({ onNavigate }: RankingProps) {
   });
 
   return (
-    <ScreenLayout title="Leaderboard">
+    <ScreenLayout title="Ranking">
       <div>
         <p style={{ marginBottom: 16 }}>Matches using your saved settings: {config.sessionDuration}s session · {config.enemySpawnInterval}s spawn interval. All gameplay parameters must match.</p>
         {isLoading && <p role="status" style={centerColStyle}>Loading ranking...</p>}

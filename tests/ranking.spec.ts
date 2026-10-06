@@ -31,7 +31,7 @@ test('third and fourth completed matches remain visible after a worker interrupt
       else state.remainingSeconds = 1 / 60;
     }, match);
     await expect(page.getByText('Registration: Submitted', { exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Leaderboard', exact: true }).click();
+    await page.getByRole('button', { name: 'Ranking', exact: true }).click();
     await expect(page.getByText(`Page 1 of 1 · ${match} results · 5 per page`, { exact: true })).toBeVisible();
     await expect(page.locator('tbody tr')).toHaveCount(match);
     await expect(page.getByRole('alert')).toHaveCount(0);
@@ -50,7 +50,7 @@ test('ranking can be reopened after history and pagination navigation', async ({
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/');
   for (let cycle = 0; cycle < 5; cycle += 1) {
-    await page.getByRole('button', { name: 'Leaderboard', exact: true }).click();
+    await page.getByRole('button', { name: 'Ranking', exact: true }).click();
     await expect(page.getByText('Page 1 of 3', { exact: false })).toBeVisible();
     await page.getByRole('button', { name: 'Next', exact: true }).click();
     await expect(page.getByText('Page 2 of 3', { exact: false })).toBeVisible();
@@ -66,7 +66,7 @@ test('lost MSW interception is restored before ranking queries', async ({ page }
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/');
-  await page.getByRole('button', { name: 'Leaderboard', exact: true }).click();
+  await page.getByRole('button', { name: 'Ranking', exact: true }).click();
   await expect(page.getByText('Page 1 of 3', { exact: false })).toBeVisible();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
 
@@ -74,10 +74,10 @@ test('lost MSW interception is restored before ranking queries', async ({ page }
   const session = await page.context().newCDPSession(page);
   await session.send('ServiceWorker.enable');
   await session.send('ServiceWorker.stopAllWorkers');
-  await page.getByRole('button', { name: 'Leaderboard', exact: true }).click();
+  await page.getByRole('button', { name: 'Ranking', exact: true }).click();
   await expect(page.getByText('Updating ranking...', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('alert')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Leaderboard', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ranking', exact: true })).toBeVisible();
   await expect(page.getByRole('cell', { name: /Blackbeard/ })).toBeVisible();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Pirate Battle', exact: true })).toBeVisible();
@@ -88,7 +88,7 @@ test('HTTP 200 HTML is rejected before it can become ranking data', async ({ pag
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/');
-  await page.getByRole('button', { name: 'Leaderboard', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Ranking', exact: true }).waitFor();
   await page.evaluate(async () => {
     const resources = performance.getEntriesByType('resource');
     const workerPath = resources.find((entry) => entry.name.includes('/src/mocks/browser.ts'))?.name;
@@ -98,9 +98,9 @@ test('HTTP 200 HTML is rejected before it can become ranking data', async ({ pag
     const { http, HttpResponse } = await import(mswPath);
     worker.use(http.get('/api/ranking', () => HttpResponse.html('<html><body>SPA document</body></html>')));
   });
-  await page.getByRole('button', { name: 'Leaderboard', exact: true }).click();
+  await page.getByRole('button', { name: 'Ranking', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Failed to load ranking');
-  await expect(page.getByRole('heading', { name: 'Leaderboard', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ranking', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   expect(errors).toEqual([]);
 });
@@ -109,7 +109,7 @@ test('malformed JSON is a query error rather than a render exception', async ({ 
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/');
-  await page.getByRole('button', { name: 'Leaderboard', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Ranking', exact: true }).waitFor();
   await page.evaluate(async () => {
     const resources = performance.getEntriesByType('resource');
     const workerPath = resources.find((entry) => entry.name.includes('/src/mocks/browser.ts'))?.name;
@@ -122,9 +122,9 @@ test('malformed JSON is a query error rather than a render exception', async ({ 
       page: 1, pageSize: 5, total: 1, totalPages: 1,
     })));
   });
-  await page.getByRole('button', { name: 'Leaderboard', exact: true }).click();
+  await page.getByRole('button', { name: 'Ranking', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Failed to load ranking');
-  await expect(page.getByRole('heading', { name: 'Leaderboard', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ranking', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   expect(errors).toEqual([]);
 });

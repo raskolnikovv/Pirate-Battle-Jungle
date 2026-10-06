@@ -4,7 +4,7 @@ test('application loads and shows main menu', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: /pirate battle/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /start game/i })).toBeVisible();
-  await expect(page.getByRole('button', { name: /leaderboard/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /ranking/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /match history/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /options/i })).toBeVisible();
 });

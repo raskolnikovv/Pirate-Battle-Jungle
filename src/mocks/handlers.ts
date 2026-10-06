@@ -1,14 +1,26 @@
 import { http, HttpResponse } from 'msw';
-import type { MatchHistoryEntry, MatchResult, PaginatedResponse, RankingEntry } from '@/types/domain';
-import { HISTORY_FIXTURE, RANKING_FIXTURE } from './fixtures';
+import type { PaginatedResponse, RankingEntry } from '@/types/domain';
+import type { MatchHistoryRecord, SubmitMatchRequest } from '@/api/matchContracts';
+import { RANKING_FIXTURE } from './fixtures';
+import { getMockHistory, registerMockMatch } from './matchHistoryState';
+import { isCompletedMatch } from '@/storage/completedMatchStorage';
+import { LOCAL_PLAYER } from '@/config/localPlayer';
+
+function isSubmission(value: unknown): value is SubmitMatchRequest {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.playerId === 'string' && record.playerId.trim().length > 0
+    && typeof record.playerName === 'string' && record.playerName.trim().length > 0
+    && isCompletedMatch({ ...record, elapsedSeconds: record.durationSeconds, registrationStatus: 'not_submitted' });
+}
 
 function paginate<T>(
   items: T[],
   page: number,
   pageSize: number,
 ): PaginatedResponse<T> {
-  const safePage = Math.max(1, page);
-  const safeSize = Math.max(1, pageSize);
+  const safePage = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
+  const safeSize = Number.isFinite(pageSize) ? Math.max(1, Math.min(100, Math.floor(pageSize))) : 20;
   const total = items.length;
   const totalPages = Math.ceil(total / safeSize);
   const start = (safePage - 1) * safeSize;
@@ -35,29 +47,17 @@ export const handlers = [
     const page = Number(url.searchParams.get('page') ?? '1');
     const pageSize = Number(url.searchParams.get('pageSize') ?? '20');
     return HttpResponse.json(
-      paginate<MatchHistoryEntry>(HISTORY_FIXTURE, page, pageSize),
+      paginate<MatchHistoryRecord>(getMockHistory(url.searchParams.get('playerId') ?? LOCAL_PLAYER.id), page, pageSize),
     );
   }),
 
   http.post('/api/matches', async ({ request }) => {
-    const body = (await request.json()) as {
-      playerName: string;
-      score: number;
-      enemiesDefeated: number;
-      endReason: MatchResult['survived'];
-      durationSeconds: number;
-    };
-
-    const matchId = `match-${Date.now()}`;
-    const result: MatchResult = {
-      matchId,
-      playerScore: body.score,
-      enemiesDefeated: body.enemiesDefeated,
-      survived: body.endReason,
-      durationSeconds: body.durationSeconds,
-      playerName: body.playerName,
-      completedAt: new Date().toISOString(),
-    };
-    return HttpResponse.json(result, { status: 201 });
+    try {
+      const body: unknown = await request.json();
+      if (!isSubmission(body)) return HttpResponse.json({ message: 'Invalid completed match.' }, { status: 400 });
+      return HttpResponse.json(registerMockMatch(body), { status: 201 });
+    } catch {
+      return HttpResponse.json({ message: 'Invalid JSON.' }, { status: 400 });
+    }
   }),
 ];

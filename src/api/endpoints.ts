@@ -1,19 +1,13 @@
 import type {
-  MatchResult,
   PaginatedResponse,
   PaginationParams,
   RankingEntry,
-  MatchHistoryEntry,
 } from '@/types/domain';
 import { httpClient } from './client';
+import type { MatchHistoryRecord, SubmitMatchRequest } from './matchContracts';
+import { LOCAL_PLAYER } from '@/config/localPlayer';
 
-export interface SubmitMatchRequest {
-  playerName: string;
-  score: number;
-  enemiesDefeated: number;
-  endReason: MatchResult['survived'];
-  durationSeconds: number;
-}
+export type { SubmitMatchRequest } from './matchContracts';
 
 export async function getRanking(
   params: PaginationParams = { page: 1, pageSize: 20 },
@@ -27,17 +21,17 @@ export async function getRanking(
 
 export async function getHistory(
   params: PaginationParams = { page: 1, pageSize: 20 },
-): Promise<PaginatedResponse<MatchHistoryEntry>> {
-  const { data } = await httpClient.get<PaginatedResponse<MatchHistoryEntry>>(
+): Promise<PaginatedResponse<MatchHistoryRecord>> {
+  const { data } = await httpClient.get<PaginatedResponse<MatchHistoryRecord>>(
     '/history',
-    { params },
+    { params: { ...params, playerId: LOCAL_PLAYER.id } },
   );
   return data;
 }
 
 export async function submitMatch(
   payload: SubmitMatchRequest,
-): Promise<MatchResult> {
-  const { data } = await httpClient.post<MatchResult>('/matches', payload);
+): Promise<MatchHistoryRecord> {
+  const { data } = await httpClient.post<MatchHistoryRecord>('/matches', payload);
   return data;
 }

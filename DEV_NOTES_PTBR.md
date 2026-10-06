@@ -10,7 +10,7 @@ A arquitetura planejada separa a interface e navegação React da simulação e 
 
 Já existem telas de menu, opções, jogo, resultado, ranking e histórico; navegação local entre elas; endpoints e respostas simuladas para ranking, histórico e envio de partida; e um teste E2E básico. `GameCanvas` inicializa e destrói uma aplicação PixiJS, e `GameLoop` tem uma estrutura de timestep fixo.
 
-A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← e D/→. Space dispara pela proa; Q/E lançam três balas paralelas. Chaser e Shooter surgem periodicamente com seed e posições validadas. A partida usa countdown da simulação, padrão 120 s; ao expirar, congela o gameplay e mantém a arena visível. Pontuação autoritativa soma 1 por inimigo eliminado por projétil do jogador; autodestruição não pontua. HP zero encerra por defeated e congela o gameplay. HUD React usa painéis/ícones oficiais e lista semântica para pontos, HP, tempo MM:SS e status reais por snapshots; comandos aparecem em legenda com teclas identificadas; Pixi mostra barras oficiais acima de todos os navios. Pausa manual e automática por blur/aba oculta congela a simulação e exige Resume explícito. Options salva duração 60–180 s e intervalo de spawn 1–15 s localmente; novas partidas usam valores salvos. Término normal navega para Result com dados reais e persiste a última conclusão; abandono retorna ao menu sem substituir resultado. Sons e integração de gameplay com API continuam pendentes.
+A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← e D/→. Space dispara pela proa; Q/E lançam três balas paralelas. Chaser e Shooter surgem periodicamente com seed e posições validadas. A partida usa countdown da simulação, padrão 120 s; ao expirar, congela o gameplay e mantém a arena visível. Pontuação autoritativa soma 1 por inimigo eliminado por projétil do jogador; autodestruição não pontua. HP zero encerra por defeated e congela o gameplay. HUD React usa painéis/ícones oficiais e lista semântica para pontos, HP, tempo MM:SS e status reais por snapshots; comandos aparecem em legenda com teclas identificadas; Pixi mostra barras oficiais acima de todos os navios. Pausa manual e automática por blur/aba oculta congela a simulação e exige Resume explícito. Options salva duração 60–180 s e intervalo de spawn 1–15 s localmente; novas partidas usam valores salvos. Término normal navega para Result com dados reais e persiste a última conclusão; abandono retorna ao menu sem substituir resultado. Conclusões agora são enviadas por mutation/Axios ao MSW e aparecem no histórico confirmado da sessão. Sons, ranking completo e robustez/persistência da API continuam pendentes.
 
 ## 2. Como a arquitetura funciona
 
@@ -24,11 +24,11 @@ A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← 
 - **Sistemas de gameplay:** `MovementSystem` move navios/balas; `CollisionSystem` detecta impactos; `CombatSystem` aplica dano/armas e pontua somente golpes fatais de projéteis do jogador. `SpawnSystem` controla countdown, PRNG e IDs, valida posições e chama factories. Não contém IA.
 - **GameConfig:** inclui dimensões lógicas da arena e limite da nave. `Game.start(config)` copia os valores ao iniciar. Options persiste somente sessionDuration e enemySpawnInterval, derivados do mesmo GameConfig. A tela Game lê uma vez por montagem; start copia o snapshot. Factories recebem valores explicitamente; nenhuma entidade busca secretamente `DEFAULT_GAME_CONFIG`.
 - **Axios:** cliente HTTP configurado com base `/api` e timeout de 10 segundos. As funções de endpoints usam esse cliente para ranking, histórico e submissão.
-- **TanStack Query:** hooks `useRanking` e `useHistory` consultam as telas e armazenam os resultados em cache. `useSubmitMatch` existe e invalida as consultas após sucesso, mas ainda não é chamado por uma tela.
-- **MSW:** em desenvolvimento, `main.tsx` inicia o worker no navegador; handlers interceptam ranking/histórico e devolvem fixtures paginadas, e o POST de partidas devolve um resultado montado a partir do corpo recebido. Isso não é um backend persistente.
+- **TanStack Query:** hooks `useRanking` e `useHistory` consultam as telas e armazenam os resultados em cache. `useSubmitMatch` é chamado pelo App somente para conclusões novas; status remoto por matchId fica no cache e sucesso invalida histórico/ranking.
+- **MSW:** main inicia o worker também no build. POST valida e guarda conclusões em Map por ID; GET history combina fixtures válidas e registros confirmados, filtrados por jogador e paginados. Estado remoto do mock ainda é só da sessão, não persistente.
 - **Playwright:** está configurado para abrir o Vite em Chromium e contém dois testes: presença dos botões do menu e navegação para o jogo/resultado/menu. Esses testes não demonstram que há gameplay real.
 
-**Fluxo existente da interface:** `main.tsx` inicia MSW em desenvolvimento e monta `App` dentro de `StrictMode` e `ReactQueryProvider`. `App` escolhe a tela. Ranking e histórico usam hooks TanStack Query → endpoints Axios → handlers MSW no ambiente de desenvolvimento.
+**Fluxo existente da interface:** `main.tsx` inicia MSW no navegador, inclusive no build e monta `App` dentro de `StrictMode` e `ReactQueryProvider`. `App` escolhe a tela. Ranking e histórico usam hooks TanStack Query → endpoints Axios → handlers MSW no ambiente de desenvolvimento.
 
 **Fluxo da partida:** `GameCanvas` carrega texturas e liga Pixi/renderer/jogo. Game verifica lifecycle e limita delta ao tempo disponível. Cada subpasso contabiliza seu tempo ativo e executa movimento/IA → ilha → armas → impactos → Shooter → contato → spawn, então detecta time-up. Dano letal durante impactos ou contato chama finishMatch imediatamente e interrompe as ações restantes. Depois de finished, update retorna antes dos sistemas e render continua. Game publica um snapshot inicial e, após updates, somente quando HP/pontos/segundo exibido/status/motivo mudam. GameCanvas encaminha à tela React; React não decrementa o timer nem recebe coordenadas.
 
@@ -1005,7 +1005,67 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 
 **Limitações:** somente última conclusão persistida, sem fila de envios nem player identity/API nova. Storage inacessível impede restauração após refresh e é sinalizado. Navegação continua local com marcador #result, sem router completo. Result usa estilo existente, sem redesign integral de assets. Validação de config confere campos numéricos/forma e coerência básica; resultado persistido nunca é usado para iniciar gameplay. Futuro contrato remoto ainda precisa incluir identidade/config/idempotência; fixture antiga de quit não foi enviada por este fluxo.
 
+### Etapa 18 — Envio de conclusão e histórico pela API (caminho de sucesso)
+
+**Status:** Concluído
+
+**Responsável pela implementação:** Colaborativo. Escopo/arquitetura definidos com o usuário; código feito pelo Codex. mockServiceWorker.js é arquivo oficial gerado pelo MSW instalado, copiado sem edição manual.
+
+**O que foi implementado:** conclusão → mutation TanStack Query → Axios → POST MSW → registro confirmado em memória → GET histórico → tela Match History. Result apresenta submitting/submitted/failed reais da requisição.
+
+**Conformidade original:** INSTRUCOES.md lido antes de implementar. Stack original, contrato completo, envio apenas de conclusão e falhas sem bloquear gameplay foram preservados. Esta etapa incremental implementa sucesso/básico; persistência de pendências/confirmados, retries avançados, cenários de falha e ranking completo continuam para próximas etapas conforme pedido. Não há alegação de que os requisitos originais restantes já estejam concluídos. Nenhum commit realizado.
+
+**Arquivos principais envolvidos:** api/matchContracts.ts, config/localPlayer.ts, mocks/matchHistoryState.ts e public/mockServiceWorker.js (novos); api/endpoints.ts; hooks/useApi.ts; mocks/handlers.ts; mocks/fixtures.ts; types/domain.ts; storage/completedMatchStorage.ts; app/App.tsx; screens/Result.tsx; screens/MatchHistory.tsx; main.tsx; este diário.
+
+**Como funciona:**
+
+- MatchHistoryRecord deriva de CompletedMatch, substitui elapsedSeconds por durationSeconds e acrescenta playerId/playerName. Mantém matchId, completedAt, score, kills, motivo (sem quit), HP final e config completo. SubmitMatchRequest usa esse mesmo DTO; retorno do POST é registro confirmado. Tipos antigos MatchResult/MatchHistoryEntry incompatíveis foram removidos do domínio, sem duplicar os mesmos dados com nomes divergentes.
+- toSubmitMatchRequest faz a conversão de tempo e identidade na fronteira HTTP. LOCAL_PLAYER usa id local-player/name Captain, determinísticos; projeto não tinha identificação local reutilizável no histórico. Não é login/autenticação. Histórico sempre consulta esse playerId.
+- App já recebe completion única do Game. Após salvar resultado local, chama useSubmitMatch.mutate uma vez no evento de conclusão, sem effect que repetiria em Strict Mode. Abandono nunca passa por esse caminho. Refresh/restauração do último resultado não dispara POST automático.
+- Hook mutation configura retry:false e lifecycle. onMutate grava submitting; onSuccess recebe confirmação real, grava submitted/record e invalida history e ranking; onError grava failed. Status fica em cache TanStack Query por matchId. Result observa cache com query desabilitada para rede, sem polling ou state duplicado da resposta. App permanece montado ao Play Again, permitindo request terminar sem prender gameplay.
+- CompletedMatch.registrationStatus not_submitted continua marcador inicial do artefato local imutável; não representa confirmação posterior. Status remoto real vive no cache MatchRegistration, omitido do DTO de envio. Não há confirmação remota persistida nesta etapa.
+- Axios mantém base /api, JSON e timeout 10 s. POST /matches usa payload real; React não chama Map do mock. MSW aplica validação de identificação e reutiliza guard puro de CompletedMatch exportado pelo módulo de storage, sem acessar localStorage no handler. Payload quit/JSON inválido/incoerente é rejeitado com 400.
+- matchHistoryState guarda Map de confirmados separado das fixtures; chave é matchId UUID produzido pelo jogo. ID existente devolve o mesmo registro sem duplicar. É uma proteção básica de identidade, não protocolo completo de idempotência/timeout/recovery. Fixture IDs têm prefixo fixture-match para não colidir com novas partidas.
+- GET /history filtra playerId, ordena por data decrescente e desempata por ID, então pagina com parâmetros numéricos normalizados. Fixture de abandono antiga foi removida; fixtures locais têm score igual a kills e configuração válida. Ranking segue fixtures antigas e não é atualizado com partidas nesta etapa.
+- useHistory refetchOnMount=always atualiza ao abrir a tela, mesmo se cache ainda fresco. Success invalida prefixo history, inclusive consultas inativas, que refazem ao montar. Não há sincronização manual de arrays em React.
+- Match History mostra date, score, kills, duração ativa com até duas casas, motivo e details com jogador/ID/session/spawn. Config completo permanece no DTO/cache. Loading e atualização de fundo usam status; erro básico usa alert; lista vazia tem mensagem; tabela pode rolar horizontalmente.
+- MSW instalado é 3.0.2: start usa onUnhandledFrame:bypass conforme tipos locais, sem opção antiga onUnhandledRequest. public/mockServiceWorker.js faltava; foi copiado da distribuição instalada. Bootstrap passa a iniciar worker em desenvolvimento e build como exige o original. Falha de startup é tratada sem impedir acesso ao app; API então pode falhar e exibir estado básico.
+
+**Por que foi feito dessa forma:** reaproveita HTTP/query existentes e mantém simulação sem rede. Status depende da confirmação HTTP; mock realmente guarda registro para próxima consulta. Map por ID e DTO comum simplificam próximas etapas, sem implantar outbox ou sistema de autenticação.
+
+**O que eu preciso entender:** código escrito pelo Codex em colaboração. Estudar mutation callbacks, query keys/invalidation, dados cacheados vs simulation snapshots, DTO na fronteira HTTP, mock na rede, diferença entre status local inicial e confirmação remota, identidade fixa e limites de estado em memória.
+
+**Como testar manualmente:**
+
+1. Iniciar pelo servidor Vite/build servido em localhost; conferir Service Worker ativo. Concluir partida por tempo/morte: Network deve mostrar exatamente um POST /api/matches, seguido de Result Submitting → Submitted após resposta.
+2. Conferir payload/retorno: mesmo matchId, playerId local-player, Captain, score real, kills, completedAt, durationSeconds sem pausa, motivo e config usada. Nenhuma atribuição de Submitted antes de sucesso.
+3. Abrir Match History pelo menu: GET /api/history inclui playerId/page/pageSize e retorna nova partida junto de fixtures. Detalhes mostram ID/config; maior data aparece primeiro.
+4. Sair/voltar ao histórico: refetch ocorre; concluir outra partida enquanto cache antigo existe e abrir histórico novamente: novo registro aparece sem duplicação.
+5. Play Again antes de resposta terminar: partida nova funciona normalmente; registro anterior pode concluir no cache por seu próprio ID. Pause/HUD/Options continuam iguais.
+6. Quit/reload durante combate: nenhum POST de abandono; última conclusão local não é substituída. API também rejeita quit caso recebido por request manual.
+7. Simular falha básica pelo navegador offline antes de concluir: status failed, sem bloquear Play Again/Menu. Não há retry automático da mutation; recuperar/enviar pendência é etapa futura.
+8. Empty state pode ser conferido consultando GET com playerId sem registros; nenhum seletor de cenários foi adicionado. Verificar error/loading/background nas ferramentas de rede sem testes E2E.
+9. Refresh: conclusão local continua em Result, mas cache/status de envio e registros novos do mock em memória são reiniciados. Label Not submitted in this session não afirma registro persistido nem reenvia automaticamente. Persistência remota/pendência é requisito futuro.
+
+**Possíveis perguntas de entrevista:**
+
+- Quem envia a partida? “App recebe completion; mutation Query usa Axios, que passa pelo endpoint MSW.”
+- Por que mock não é chamado pelo React? “MSW intercepta HTTP; cliente usa a mesma fronteira que usaria com servidor.”
+- Como histórico vê dados novos? “POST guarda no mock e invalido cache; GET consulta os confirmados e ao abrir a tela refaz a consulta.”
+- Quando mostra Submitted? “Só no onSuccess após confirmação da API, nunca ao criar resultado local.”
+- Como evita abandono? “Somente callback de conclusão chama mutation; DTO/validação não aceitam quit.”
+- Quem identifica jogador? “Uma identidade local fixa, suficiente para demo single-player, sem autenticação.”
+
+**Validação:** primeira verificação apontou tipagem do updater da união de status e opção antiga de MSW; ambas corrigidas com APIs/tipos instalados. Typecheck, lint e build finais passaram pelo npm-cli instalado. Launcher npm quebrado é preexistente. Aviso preexistente de chunk > 500 kB permanece (principal 1.006,19 kB minificado). Não foram executados testes de navegador/E2E nesta tarefa.
+
+**Limitações intencionais:** confirmados e status remoto só em memória; refresh reinicia esse estado. Sem pendências persistidas, reenvio manual/automático, recovery após timeout de POST, protocolo completo de idempotência, proteção avançada de respostas fora de ordem, cenários MSW configuráveis ou ranking dinâmico. Histórico mostra primeira página de 20 registros; controles completos de paginação ficam para etapa própria. Requisito original de registro consistente/persistente nas duas abas ainda não está concluído.
+
 ## 5. Conceitos importantes para estudar
+
+- **Mutation:** gerencia envio e estados de operação; não substitui simulação e não deve repetir POST por efeitos de montagem.
+- **Invalidação de cache:** marca consultas relacionadas como desatualizadas; refetch consulta o mock/servidor novamente.
+- **DTO:** contrato de transporte compartilhado entre endpoint, handler e tela; conversão fica na fronteira da aplicação.
+- **Estado de mock:** Map de servidor simulado guarda registros confirmados sem virar estado React; memória ainda não é persistência.
 
 - **Snapshot final:** dados independentes capturados na conclusão, usados para UI/storage sem compartilhar estado contínuo.
 - **Conclusão vs abandono:** finish produz resultado; destroy libera recursos e não concede conclusão.
@@ -1073,9 +1133,12 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 - **Axios:** cliente HTTP configurado com base `/api`, JSON e timeout; MSW intercepta chamadas no desenvolvimento.
 - **MSW:** mocka a fronteira de rede e permite que o código cliente use requisições reais do navegador sem servidor de API.
 - **Playwright E2E:** controla um browser real para verificar fluxos completos visíveis. Os testes atuais cobrem navegação, não regras do jogo.
-- **Idempotência:** não há mecanismo de idempotência implementado. Vale estudar quando envio/retry de partidas entrar no escopo, para evitar duplicar submissões.
+- **Idempotência:** há proteção básica de ID no mock (etapa 18), mas protocolo completo de recuperação/idempotência ainda não foi implementado. Vale estudar quando envio/retry de partidas entrar no escopo, para evitar duplicar submissões.
 
 ## 6. Perguntas que eu deveria conseguir responder
+
+- **Como a conclusão vira histórico?** “Mutation Query → Axios → POST MSW → Map confirmado; GET retorna registro e cache é invalidado.”
+- **Sucesso local é sucesso da API?** “Não; Result usa onSuccess HTTP para Submitted. Salvar JSON local é outra operação.”
 
 - **Como resultado chega à UI?** “Game emite callback uma vez; Canvas encaminha, Game screen navega e App persiste/apresenta.”
 - **Por que abandono não sobrescreve resultado?** “Sair chama cleanup, sem callback de conclusão ou gravação.”
@@ -1129,6 +1192,8 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 - **O que os testes automatizados garantem hoje?** “A abertura do menu e alguns caminhos de navegação. Não garantem que o jogo seja jogável.”
 
 ## 7. Pontos que ainda não domino
+
+- **Integração API implementada pelo Codex em colaboração:** revisar callbacks de mutation, cache por ID, disabled query de status, DTO, validação do POST, worker MSW 3 e diferença entre memória/persistência. Robustez original completa ainda precisa de estudo/implementação.
 
 - **Result implementado pelo Codex em colaboração:** revisar callback único, config congelada, tipo que exclui quit, validação completa de JSON, marcador #result e preparação de registro sem fingir sucesso de API.
 

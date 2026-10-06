@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import { NavButton } from "@/components/NavButton";
 import { ScreenLayout } from "@/components/ScreenLayout";
 import { useHistory } from "@/hooks/useApi";
-import type { MatchHistoryEntry, MatchEndReason } from "@/types/domain";
+import type { MatchHistoryRecord } from "@/api/matchContracts";
 import type { ScreenName } from "@/app/navigationTypes";
 
 interface MatchHistoryProps {
@@ -10,7 +10,7 @@ interface MatchHistoryProps {
 }
 
 const tableWrapStyle: CSSProperties = {
-  overflow: "hidden",
+  overflowX: "auto",
   borderRadius: 12,
   border: "1px solid #334155",
 };
@@ -33,20 +33,18 @@ const centerColStyle: CSSProperties = {
   color: "#94a3b8",
 };
 
-const reasonLabel: Record<MatchEndReason, string> = {
+const reasonLabel: Record<MatchHistoryRecord['endReason'], string> = {
   time_expired: "Time Expired",
   player_defeated: "Defeated",
-  quit: "Quit",
 };
 
-const reasonColor: Record<MatchEndReason, string> = {
+const reasonColor: Record<MatchHistoryRecord['endReason'], string> = {
   time_expired: "#4ade80",
   player_defeated: "#f87171",
-  quit: "#94a3b8",
 };
 
 export function MatchHistory({ onNavigate }: MatchHistoryProps) {
-  const { data, isLoading, error } = useHistory({ page: 1, pageSize: 20 });
+  const { data, isLoading, isFetching, error } = useHistory({ page: 1, pageSize: 20 });
 
   const rowStyle = (idx: number): CSSProperties => ({
     borderTop: "1px solid #334155",
@@ -56,9 +54,10 @@ export function MatchHistory({ onNavigate }: MatchHistoryProps) {
   return (
     <ScreenLayout title="Match History">
       <div>
-        {isLoading && <p style={centerColStyle}>Loading history...</p>}
+        {isLoading && <p role="status" style={centerColStyle}>Loading history...</p>}
+        {isFetching && !isLoading && <p role="status">Updating history...</p>}
         {error && (
-          <p style={{ ...centerColStyle, color: "#f87171" }}>
+          <p role="alert" style={{ ...centerColStyle, color: "#f87171" }}>
             Failed to load history. Please try again.
           </p>
         )}
@@ -72,10 +71,11 @@ export function MatchHistory({ onNavigate }: MatchHistoryProps) {
                   <th style={{ ...thStyle, textAlign: "right" }}>Kills</th>
                   <th style={{ ...thStyle, textAlign: "right" }}>Duration</th>
                   <th style={{ ...thStyle, textAlign: "right" }}>Result</th>
+                  <th style={thStyle}>Configuration</th>
                 </tr>
               </thead>
               <tbody>
-                {data.items.map((entry: MatchHistoryEntry, idx: number) => (
+                {data.items.map((entry, idx: number) => (
                   <tr key={entry.matchId} style={rowStyle(idx)}>
                     <td style={{ padding: "12px 16px", color: "#cbd5e1" }}>
                       {new Date(entry.completedAt).toLocaleString()}
@@ -106,7 +106,7 @@ export function MatchHistory({ onNavigate }: MatchHistoryProps) {
                         color: "#cbd5e1",
                       }}
                     >
-                      {entry.durationSeconds}s
+                      {Number(entry.durationSeconds.toFixed(2))}s
                     </td>
                     <td
                       style={{
@@ -114,21 +114,29 @@ export function MatchHistory({ onNavigate }: MatchHistoryProps) {
                         textAlign: "right",
                         color:
                           reasonColor[
-                            entry.endReason as MatchEndReason
+                            entry.endReason
                           ],
                       }}
                     >
                       {
                         reasonLabel[
-                          entry.endReason as MatchEndReason
+                          entry.endReason
                         ]
                       }
+                    </td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <details>
+                        <summary>Match details</summary>
+                        <p>Player: {entry.playerName} ({entry.playerId})</p>
+                        <p>Match: {entry.matchId}</p>
+                        <p>Session: {entry.config.sessionDuration}s · Spawn: {entry.config.enemySpawnInterval}s</p>
+                      </details>
                     </td>
                   </tr>
                 ))}
                 {data.items.length === 0 && (
                   <tr>
-                    <td colSpan={5} style={centerColStyle}>
+                    <td colSpan={6} style={centerColStyle}>
                       No matches played yet.
                     </td>
                   </tr>

@@ -6,12 +6,10 @@ import { worker } from "@/mocks/browser";
 import "@/index.css";
 
 async function bootstrap() {
-  if (import.meta.env.DEV) {
-    try {
-      await worker.start();
-    } catch (err) {
-      console.warn("MSW failed to start:", err);
-    }
+  try {
+    await worker.start({ onUnhandledFrame: 'bypass' });
+  } catch (err) {
+    console.warn("MSW failed to start:", err);
   }
 
   const rootElement = document.getElementById("root");

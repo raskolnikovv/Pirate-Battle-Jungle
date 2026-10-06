@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import { NavButton } from "@/components/NavButton";
 import { ScreenLayout } from "@/components/ScreenLayout";
 import type { GameResultPayload, ScreenName } from "@/app/navigationTypes";
+import { useMatchRegistration } from "@/hooks/useApi";
 
 interface ResultProps {
   onNavigate: (screen: ScreenName) => void;
@@ -33,6 +34,11 @@ const buttonRowStyle: CSSProperties = {
 };
 
 export function Result({ onNavigate, result, storageError = false }: ResultProps) {
+  const { data: registration } = useMatchRegistration(result?.matchId);
+  const registrationLabels = {
+    not_submitted: 'Not submitted in this session', submitting: 'Submitting...',
+    submitted: 'Submitted', failed: 'Submission failed',
+  };
   if (!result) {
     return <ScreenLayout title="Match Results">
       <p role="status">No completed match is available.</p>
@@ -96,8 +102,9 @@ export function Result({ onNavigate, result, storageError = false }: ResultProps
         </div>
 
         <section aria-label="Match details" style={{ lineHeight: 1.8 }}>
-          <p>Registration: <strong>{result.registrationStatus === 'not_submitted' ? 'Not submitted yet' : result.registrationStatus}</strong></p>
-          <p>This match has not been sent to the ranking or match history.</p>
+          <p role="status" aria-atomic="true">Registration: <strong>{registrationLabels[registration?.status ?? 'not_submitted']}</strong></p>
+          {registration?.status === 'submitted' && <p>The API confirmed this match in your history.</p>}
+          {registration?.status === 'failed' && <p>Registration failed. You can still play another match.</p>}
           <p>Session time: {result.config.sessionDuration}s · Enemy spawn time: {result.config.enemySpawnInterval}s</p>
           <p>Completed: <time dateTime={result.completedAt}>{new Date(result.completedAt).toLocaleString('en-US')}</time></p>
           {storageError && <p role="alert">Unable to save this result locally. It remains available until you reload.</p>}

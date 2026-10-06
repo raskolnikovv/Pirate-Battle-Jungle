@@ -7,16 +7,20 @@ import { Ranking } from '@/screens/Ranking';
 import { MatchHistory } from '@/screens/MatchHistory';
 import type { GameResultPayload, ScreenName } from '@/app/navigationTypes';
 import { loadLastCompletedMatch, saveLastCompletedMatch } from '@/storage/completedMatchStorage';
+import { useSubmitMatch } from '@/hooks/useApi';
+import { toSubmitMatchRequest } from '@/api/matchContracts';
 
 export function App() {
   const [screen, setScreen] = useState<ScreenName>(() => window.location.hash === '#result' ? 'result' : 'main-menu');
   const [lastResult, setLastResult] = useState<GameResultPayload | undefined>(loadLastCompletedMatch);
   const [resultStorageError, setResultStorageError] = useState(false);
+  const submission = useSubmitMatch();
 
   const navigate = (next: ScreenName, payload?: GameResultPayload) => {
     if (next === 'result' && payload) {
       setLastResult(payload);
       setResultStorageError(!saveLastCompletedMatch(payload));
+      submission.mutate(toSubmitMatchRequest(payload));
     }
     // Only Result is restored on reload; an active match is never resumed from storage.
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${next === 'result' ? '#result' : ''}`);

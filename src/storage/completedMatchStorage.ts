@@ -18,7 +18,7 @@ function matchesConfigShape(value: unknown, template: unknown): boolean {
   return Object.entries(template).every(([key, field]) => matchesConfigShape(value[key], field));
 }
 
-function isCompletedMatch(value: unknown): value is CompletedMatch {
+export function isCompletedMatch(value: unknown): value is CompletedMatch {
   if (!isRecord(value) || !isRecord(value.config)
     || !matchesConfigShape(value.config, DEFAULT_GAME_CONFIG)) return false;
   const duration = value.config.sessionDuration;

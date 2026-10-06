@@ -1,4 +1,7 @@
-import type { MatchHistoryEntry, RankingEntry } from '@/types/domain';
+import type { RankingEntry } from '@/types/domain';
+import type { MatchHistoryRecord } from '@/api/matchContracts';
+import { DEFAULT_GAME_CONFIG } from '@/config/gameConfig';
+import { LOCAL_PLAYER } from '@/config/localPlayer';
 
 export const RANKING_FIXTURE: RankingEntry[] = [
   { rank: 1, playerName: 'Blackbeard', highScore: 12500, matchesPlayed: 42 },
@@ -11,45 +14,13 @@ export const RANKING_FIXTURE: RankingEntry[] = [
   { rank: 8, playerName: 'AnneBonny', highScore: 5300, matchesPlayed: 14 },
 ];
 
-export const HISTORY_FIXTURE: MatchHistoryEntry[] = [
-  {
-    matchId: 'match-001',
-    score: 2400,
-    enemiesDefeated: 12,
-    endReason: 'time_expired',
-    durationSeconds: 120,
-    completedAt: '2026-10-05T14:30:00Z',
-  },
-  {
-    matchId: 'match-002',
-    score: 1800,
-    enemiesDefeated: 8,
-    endReason: 'player_defeated',
-    durationSeconds: 87,
-    completedAt: '2026-10-05T12:15:00Z',
-  },
-  {
-    matchId: 'match-003',
-    score: 3100,
-    enemiesDefeated: 15,
-    endReason: 'time_expired',
-    durationSeconds: 120,
-    completedAt: '2026-10-04T20:00:00Z',
-  },
-  {
-    matchId: 'match-004',
-    score: 750,
-    enemiesDefeated: 3,
-    endReason: 'quit',
-    durationSeconds: 22,
-    completedAt: '2026-10-04T10:45:00Z',
-  },
-  {
-    matchId: 'match-005',
-    score: 2100,
-    enemiesDefeated: 10,
-    endReason: 'time_expired',
-    durationSeconds: 120,
-    completedAt: '2026-10-03T16:20:00Z',
-  },
+const fixtureIdentity = { playerId: LOCAL_PLAYER.id, playerName: LOCAL_PLAYER.name, config: DEFAULT_GAME_CONFIG };
+
+export const HISTORY_FIXTURE: MatchHistoryRecord[] = [
+  { ...fixtureIdentity, matchId: 'fixture-match-001', score: 12, enemiesDefeated: 12,
+    endReason: 'time_expired', durationSeconds: 120, playerHealth: 40, completedAt: '2026-10-05T14:30:00Z' },
+  { ...fixtureIdentity, matchId: 'fixture-match-002', score: 8, enemiesDefeated: 8,
+    endReason: 'player_defeated', durationSeconds: 87, playerHealth: 0, completedAt: '2026-10-05T12:15:00Z' },
+  { ...fixtureIdentity, matchId: 'fixture-match-003', score: 15, enemiesDefeated: 15,
+    endReason: 'time_expired', durationSeconds: 120, playerHealth: 20, completedAt: '2026-10-04T20:00:00Z' },
 ];

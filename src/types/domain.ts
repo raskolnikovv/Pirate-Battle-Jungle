@@ -45,30 +45,11 @@ export type MatchEndReason =
   | 'player_defeated'
   | 'quit';
 
-export interface MatchResult {
-  matchId: string;
-  playerScore: number;
-  enemiesDefeated: number;
-  survived: MatchEndReason;
-  durationSeconds: number;
-  playerName: string;
-  completedAt: string;
-}
-
 export interface RankingEntry {
   rank: number;
   playerName: string;
   highScore: number;
   matchesPlayed: number;
-}
-
-export interface MatchHistoryEntry {
-  matchId: string;
-  score: number;
-  enemiesDefeated: number;
-  endReason: MatchEndReason;
-  durationSeconds: number;
-  completedAt: string;
 }
 
 export interface PaginationParams {

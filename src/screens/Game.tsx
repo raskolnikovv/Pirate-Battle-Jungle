@@ -4,6 +4,7 @@ import { GameCanvas, type GameCanvasControls } from "@/components/GameCanvas";
 import { PauseDialog } from "@/components/PauseDialog";
 import { NavButton } from "@/components/NavButton";
 import type { GameResultPayload, ScreenName } from "@/app/navigationTypes";
+import { HUD_ASSET_MANIFEST } from "@/game/assets/hudAssets";
 
 interface GameProps {
   onNavigate: (screen: ScreenName, payload?: GameResultPayload) => void;
@@ -20,19 +21,19 @@ const headerStyle: CSSProperties = {
   borderBottom: "1px solid #334155",
 };
 
-const statsStyle: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: "8px 24px",
-  fontSize: 14,
-};
-
 export function Game({ onNavigate }: GameProps) {
   const [hud, setHud] = useState<GameHudSnapshot | null>(null);
   const gameControlsRef = useRef<GameCanvasControls>(null);
   const matchLabel = !hud ? "Loading" : hud.status === "running" ? "Playing"
     : hud.status === "paused" ? "Paused"
     : hud.finishReason === "defeated" ? "Ship Destroyed" : "Time Expired";
+  const stats = [
+    { label: "Health (HP)", icon: HUD_ASSET_MANIFEST.healthIcon,
+      value: hud ? `${hud.health} / ${hud.maxHealth}` : "-- / --" },
+    { label: "Score", icon: HUD_ASSET_MANIFEST.scoreIcon, value: hud?.score ?? "--" },
+    { label: "Remaining time", icon: HUD_ASSET_MANIFEST.timeIcon,
+      value: hud ? formatRemainingTime(hud.remainingSeconds) : "--:--" },
+  ];
   const handleQuit = () => {
     onNavigate("result", {
       score: 0,
@@ -53,18 +54,26 @@ export function Game({ onNavigate }: GameProps) {
       }}
     >
       <header style={headerStyle}>
-        <div style={statsStyle} role="group" aria-label="Match information">
-          <span>
-            Score: <strong style={{ color: "#fbbf24" }}>{hud?.score ?? "--"}</strong>
-          </span>
-          <span>
-            Time: <strong style={{ color: "#fbbf24", fontVariantNumeric: "tabular-nums" }}>{hud ? formatRemainingTime(hud.remainingSeconds) : "--:--"}</strong>
-          </span>
-          <span>
-            HP: <strong style={{ color: "#4ade80" }}>{hud ? `${hud.health} / ${hud.maxHealth}` : "-- / --"}</strong>
-          </span>
-          <span role="status">{matchLabel}</span>
-        </div>
+        <section aria-label="Match information">
+          <dl className="match-hud">
+            {stats.map(({ label, icon, value }) => (
+              <div className="match-hud-stat" key={label}>
+                <dt>{label}</dt>
+                <dd className="match-hud-counter">
+                  <img className="match-hud-panel" src={HUD_ASSET_MANIFEST.counterPanel} alt=""
+                    onError={(event) => { event.currentTarget.hidden = true; }} />
+                  <img className="match-hud-icon" src={icon} alt="" width={28} height={28}
+                    onError={(event) => { event.currentTarget.hidden = true; }} />
+                  <strong>{value}</strong>
+                </dd>
+              </div>
+            ))}
+            <div className="match-hud-state">
+              <dt>Match state</dt>
+              <dd role="status" aria-atomic="true">{matchLabel}</dd>
+            </div>
+          </dl>
+        </section>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
           <button className="pause-action" disabled={hud?.status !== "running"}
             onClick={() => gameControlsRef.current?.pause()}>Pause</button>
@@ -85,9 +94,17 @@ export function Game({ onNavigate }: GameProps) {
       >
         <GameCanvas ref={gameControlsRef} onHudChange={setHud} />
       </main>
-      <p style={{ padding: "8px 16px 16px", textAlign: "center", fontSize: 14 }}>
-        W / ↑: Forward · A / ←: Left · D / →: Right · Space: Front shot · Q / E: Left / right broadside
-      </p>
+      <section className="match-controls" aria-labelledby="keyboard-controls-title">
+        <h2 id="keyboard-controls-title">Keyboard controls</h2>
+        <ul>
+          <li><kbd>W</kbd> / <kbd aria-label="Arrow Up">↑</kbd> Move forward</li>
+          <li><kbd>A</kbd> / <kbd aria-label="Arrow Left">←</kbd> Rotate left</li>
+          <li><kbd>D</kbd> / <kbd aria-label="Arrow Right">→</kbd> Rotate right</li>
+          <li><kbd>Space</kbd> Front shot</li>
+          <li><kbd>Q</kbd> Left broadside</li>
+          <li><kbd>E</kbd> Right broadside</li>
+        </ul>
+      </section>
       <PauseDialog paused={hud?.status === "paused"} onResume={() => gameControlsRef.current?.resume()} />
     </div>
   );

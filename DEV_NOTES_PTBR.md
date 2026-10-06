@@ -10,7 +10,7 @@ A arquitetura planejada separa a interface e navegação React da simulação e 
 
 Já existem telas de menu, opções, jogo, resultado, ranking e histórico; navegação local entre elas; endpoints e respostas simuladas para ranking, histórico e envio de partida; e um teste E2E básico. `GameCanvas` inicializa e destrói uma aplicação PixiJS, e `GameLoop` tem uma estrutura de timestep fixo.
 
-A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← e D/→. Space dispara pela proa; Q/E lançam três balas paralelas. Chaser e Shooter surgem periodicamente com seed e posições validadas. A partida usa countdown da simulação, padrão 120 s; ao expirar, congela o gameplay e mantém a arena visível. Pontuação autoritativa soma 1 por inimigo eliminado por projétil do jogador; autodestruição não pontua. HP zero encerra por defeated e congela o gameplay. HUD React mostra pontos, HP, tempo MM:SS e status reais por snapshots; Pixi mostra barras oficiais acima de todos os navios. Pausa manual e automática por blur/aba oculta congela a simulação e exige Resume explícito. Transição automática para resultado, sons e integração de gameplay com API continuam pendentes.
+A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← e D/→. Space dispara pela proa; Q/E lançam três balas paralelas. Chaser e Shooter surgem periodicamente com seed e posições validadas. A partida usa countdown da simulação, padrão 120 s; ao expirar, congela o gameplay e mantém a arena visível. Pontuação autoritativa soma 1 por inimigo eliminado por projétil do jogador; autodestruição não pontua. HP zero encerra por defeated e congela o gameplay. HUD React usa painéis/ícones oficiais e lista semântica para pontos, HP, tempo MM:SS e status reais por snapshots; comandos aparecem em legenda com teclas identificadas; Pixi mostra barras oficiais acima de todos os navios. Pausa manual e automática por blur/aba oculta congela a simulação e exige Resume explícito. Transição automática para resultado, sons e integração de gameplay com API continuam pendentes.
 
 ## 2. Como a arquitetura funciona
 
@@ -840,7 +840,58 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 
 **Limitações:** pausa manual pelo botão, sem novo atalho. Modal simples acompanha o estilo existente; não reproduz integralmente a arte sample_pause. Browser deve suportar dialog.showModal (navegadores modernos). Nenhum teste manual de navegador executado nesta tarefa. Result/API continuam fora desta etapa; o fluxo Quit existente permanece.
 
+### Etapa 15 — Assets oficiais e semântica do HUD
+
+**Status:** Concluído
+
+**Responsável pela implementação:** Colaborativo. Escopo e arquitetura definidos com o usuário; implementação feita pelo Codex.
+
+**O que foi implementado:** painel oficial e ícones de vida/pontos/tempo no HUD React; valores em lista de descrição semântica; legenda estruturada de controles reais fora da arena.
+
+**Conformidade original:** INSTRUCOES.md foi lido primeiro. Exige assets fornecidos, comandos apresentados, pontos/tempo/estado em interface semântica e ausência de anúncios por frame. Nenhum conflito encontrado. Não foram introduzidos bindings, regras ou requisitos de gameplay adicionais. Nenhum commit realizado.
+
+**Arquivos principais envolvidos:** src/game/assets/hudAssets.ts (novo); src/screens/Game.tsx; src/index.css; este diário.
+
+**Como funciona:**
+
+- HUD_ASSET_MANIFEST centraliza counter_panel.png, icon_heart.png, icon_score.png e icon_time.png, inspecionados junto do atlas oficial. São decoração DOM carregada nativamente por img; não precisam virar texturas Pixi nem fazer parte do carregamento obrigatório do mundo. O loader existente de água/navios/barras continua igual.
+- Imagens têm alt vazio para não duplicar rótulos. Se decoração falhar, onError oculta a imagem; texto e fundo CSS permanecem disponíveis sem bloquear gameplay. Não há listeners globais, novos timers ou efeitos de inicialização.
+- section Match information contém dl; dt identifica Health (HP), Score, Remaining time e Match state; dd contém os valores do mesmo snapshot. A própria apresentação visível é semântica, sem segunda cópia de dados ou dependência do canvas.
+- Somente dd do estado tem role=status/aria-atomic. Leitor de tela pode consultar vida/pontos/tempo, mas alterações desses valores não são anúncios automáticos. O status só muda em loading/playing/paused/fim, nunca por frame.
+- PublishHud e o snapshot existentes não foram alterados: React recebe apenas mudanças de campos apresentados, não posições ou frações do timer. Formato MM:SS e regras de pontuação permanecem.
+- Keyboard controls usa heading, ul/li e kbd: W/Arrow Up avança; A/Arrow Left gira à esquerda; D/Arrow Right gira à direita; Space dispara frontal; Q/E disparam salvas à esquerda/direita. Setas têm nome acessível. Valores conferidos no InputManager; nenhuma nova associação foi criada.
+- Painéis ficam no cabeçalho e legenda abaixo do canvas, sem cobrir arena. Flex wrap acomoda largura disponível; tamanho lógico da simulação não depende desses elementos.
+
+**Por que foi feito dessa forma:** usa arte oficial sem alterar regras ou resources Pixi. Um único DOM visível atende leitura visual e assistiva, evitando divergência. Legenda descreve comandos implementados e não sugere controles de toque ainda ausentes.
+
+**O que eu preciso entender:** código escrito pelo Codex nesta colaboração. Revisar dl/dt/dd, alt decorativo, live regions limitadas, estado autoritativo/snapshot e diferença entre imagem DOM e textura Pixi.
+
+**Como testar manualmente:**
+
+1. Start Game: conferir painel/ícones oficiais, HP 100 / 100, Score 0, Time 02:00 e Playing. Redimensionar: cabeçalho e legenda quebram linhas sem sobrepor a arena.
+2. Conferir cada tecla da legenda jogando: W/↑, A/←, D/→, Space, Q e E. Movimento e tiros podem ser usados juntos.
+3. Receber dano, eliminar inimigo e deixar Chaser encostar: HP/pontos mostram regras existentes; contato não soma pontos. Timer MM:SS continua real.
+4. Pausar manualmente/trocar aba: status Paused, valores congelados e modal existente. Resume explícito retoma; no fim valores finais são preservados. Nova partida restaura valores.
+5. No painel Accessibility do navegador ou leitor de tela, localizar Match information e pares de rótulo/valor; navegar até Keyboard controls. Ícones não devem ter nomes duplicados. Timer não deve ser anunciado a cada segundo; somente status é live.
+6. Bloquear uma imagem decorativa pelo DevTools/Network e recarregar: texto continua legível, sem impedir arena. O loader de assets Pixi mantém tratamento de falhas próprio.
+
+**Possíveis perguntas de entrevista:**
+
+- Por que informação fora do canvas? “Canvas não oferece esses pares semânticos; o DOM apresenta os mesmos valores a tecnologias assistivas.”
+- Como evita anúncios frequentes? “HP/score/timer não têm live region; somente mudanças de estado são anunciadas.”
+- Por que ícones usam alt vazio? “São decorativos; os rótulos de texto já identificam cada valor.”
+- Como evita divergência? “O HUD visual e semântico são o mesmo DOM alimentado pelo snapshot da simulação.”
+- Por que não carregar ícones com Pixi? “Esses ícones pertencem ao DOM React; navegador carrega imagens, sem textura ou cleanup Pixi extra.”
+
+**Validação:** typecheck, lint e build passaram via npm-cli instalado. Launcher npm quebrado é preexistente. Build mantém aviso de chunk > 500 kB: principal 996,49 kB minificado. Revisão conferiu comandos no InputManager e preservação da bridge/sistemas. Não foram criados ou executados testes E2E; validação manual será feita pelo usuário.
+
+**Limitações:** sem teste manual no navegador/leitor de tela nesta tarefa. Painéis seguem cabeçalho existente, sem reprodução integral da referência. Em viewports pequenos o conteúdo pode exigir rolagem, mantendo a arena em proporção; controles de toque continuam fora deste marco. Result/API permanecem pendentes.
+
 ## 5. Conceitos importantes para estudar
+
+- **Lista de descrição:** dl reúne pares dt (rótulo) e dd (valor), úteis para estatísticas do jogo.
+- **Imagem decorativa:** alt vazio evita leitura redundante quando texto já explica o ícone.
+- **Região live limitada:** role=status anuncia mudanças de estado; não envolve cronômetro, evitando anúncios contínuos.
 
 - **Pausa do relógio:** parar updates mantém todos os valores temporais; reset de lastTime/acumulador descarta tempo de parede da pausa.
 - **blur e visibilitychange:** perder foco e ocultar documento são eventos diferentes; ambos pausam, nenhum retoma.
@@ -898,6 +949,9 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 
 ## 6. Perguntas que eu deveria conseguir responder
 
+- **Como o HUD é acessível fora do canvas?** “Valores ficam em dl/dt/dd no DOM e vêm do mesmo snapshot apresentado visualmente.”
+- **Por que não anunciar cada segundo?** “Interromperia a leitura; timer é consultável, enquanto só o estado é anunciado automaticamente.”
+
 - **Pausa é só bloquear input?** “Não; paro o loop e bloqueio updates. Toda simulação e seus timers ficam congelados.”
 - **O que acontece ao voltar à aba?** “Continua paused até Resume; não simulo o tempo decorrido fora do jogo.”
 
@@ -940,6 +994,8 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 - **O que os testes automatizados garantem hoje?** “A abertura do menu e alguns caminhos de navegação. Não garantem que o jogo seja jogável.”
 
 ## 7. Pontos que ainda não domino
+
+- **HUD semântico implementado pelo Codex em colaboração:** estudar listas de descrição, alt vazio, live regions e revisar manualmente comportamento com leitor de tela; checks estáticos não garantem experiência assistiva.
 
 - **Pausa implementada pelo Codex em colaboração:** revisar transições running/paused/finished, retorno explícito, reset do relógio, repeat de teclado, controles por ref, foco do dialog e cleanup de listeners.
 

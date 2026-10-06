@@ -6,9 +6,4 @@ export type ScreenName =
   | 'ranking'
   | 'match-history';
 
-export interface GameResultPayload {
-  score: number;
-  enemiesDefeated: number;
-  durationSeconds: number;
-  endReason: 'time_expired' | 'player_defeated' | 'quit';
-}
+export type GameResultPayload = import('@/types/completedMatch').CompletedMatch;

@@ -12,6 +12,7 @@ export interface GameState {
   weaponCooldowns: { front: number; left: number; right: number };
   nextProjectileId: number;
   score: number;
+  enemiesDefeated: number;
   elapsedSeconds: number;
   durationSeconds: number;
   remainingSeconds: number;

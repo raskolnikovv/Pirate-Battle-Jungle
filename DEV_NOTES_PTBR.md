@@ -10,7 +10,7 @@ A arquitetura planejada separa a interface e navegação React da simulação e 
 
 Já existem telas de menu, opções, jogo, resultado, ranking e histórico; navegação local entre elas; endpoints e respostas simuladas para ranking, histórico e envio de partida; e um teste E2E básico. `GameCanvas` inicializa e destrói uma aplicação PixiJS, e `GameLoop` tem uma estrutura de timestep fixo.
 
-A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← e D/→. Space dispara pela proa; Q/E lançam três balas paralelas. Chaser e Shooter surgem periodicamente com seed e posições validadas. A partida usa countdown da simulação, padrão 120 s; ao expirar, congela o gameplay e mantém a arena visível. Pontuação autoritativa soma 1 por inimigo eliminado por projétil do jogador; autodestruição não pontua. HP zero encerra por defeated e congela o gameplay. HUD React usa painéis/ícones oficiais e lista semântica para pontos, HP, tempo MM:SS e status reais por snapshots; comandos aparecem em legenda com teclas identificadas; Pixi mostra barras oficiais acima de todos os navios. Pausa manual e automática por blur/aba oculta congela a simulação e exige Resume explícito. Options salva duração 60–180 s e intervalo de spawn 1–15 s localmente; novas partidas usam valores salvos. Transição automática para resultado, sons e integração de gameplay com API continuam pendentes.
+A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← e D/→. Space dispara pela proa; Q/E lançam três balas paralelas. Chaser e Shooter surgem periodicamente com seed e posições validadas. A partida usa countdown da simulação, padrão 120 s; ao expirar, congela o gameplay e mantém a arena visível. Pontuação autoritativa soma 1 por inimigo eliminado por projétil do jogador; autodestruição não pontua. HP zero encerra por defeated e congela o gameplay. HUD React usa painéis/ícones oficiais e lista semântica para pontos, HP, tempo MM:SS e status reais por snapshots; comandos aparecem em legenda com teclas identificadas; Pixi mostra barras oficiais acima de todos os navios. Pausa manual e automática por blur/aba oculta congela a simulação e exige Resume explícito. Options salva duração 60–180 s e intervalo de spawn 1–15 s localmente; novas partidas usam valores salvos. Término normal navega para Result com dados reais e persiste a última conclusão; abandono retorna ao menu sem substituir resultado. Sons e integração de gameplay com API continuam pendentes.
 
 ## 2. Como a arquitetura funciona
 
@@ -949,7 +949,68 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 
 **Limitações:** se armazenamento local for bloqueado, Save falha explicitamente e leitura usa defaults. Sem sincronização visual automática de Options entre abas; reabrir lê dados atuais. Configuração exposta somente para duração/intervalo; não altera probabilidades ou outros parâmetros. Resultado real/API continuam pendentes.
 
+### Etapa 17 — Result e fluxo local de partida concluída
+
+**Status:** Concluído
+
+**Responsável pela implementação:** Colaborativo. Requisitos e estratégia definidos com o usuário; implementação realizada pelo Codex.
+
+**O que foi implementado:** resultado real após time-up/derrota, contrato CompletedMatch, registro local da última conclusão, restauração no refresh de Result, distinção de abandono e status honesto de registro ainda não enviado.
+
+**Conformidade original:** INSTRUCOES.md foi lido antes das alterações. Resultado tem pontos, tempo ativo, motivo, situação de registro e ações Play Again/Main Menu. Última conclusão persiste; abandono não vira resultado nem substitui a conclusão anterior. Sem conflito e sem commit. API completa permanece para etapa posterior, conforme pedido incremental.
+
+**Arquivos principais envolvidos:** types/completedMatch.ts e storage/completedMatchStorage.ts (novos); game/core/Game.ts; game/core/GameState.ts; game/systems/CombatSystem.ts; components/GameCanvas.tsx; screens/Game.tsx; screens/Result.tsx; app/App.tsx; app/navigationTypes.ts; screens/MatchHistory.tsx; este diário.
+
+**Como funciona:**
+
+- CompletedMatch contém matchId UUID, completedAt ISO, score, enemiesDefeated, elapsedSeconds, endReason time_expired/player_defeated, playerHealth, config completo e registrationStatus not_submitted. Não admite quit. GameResultPayload agora aponta para esse contrato, sem bundle de valores fictícios.
+- GameState mantém contador de eliminações separado de score. CombatSystem incrementa ambos somente no golpe fatal de projétil do jogador; recompensa não mudou. Isso permite contar kills mesmo se os pontos forem ajustados via configuração. Contato e remoção não pontuam nem contam kills.
+- finishMatch mantém guard running, grava finished/motivo e remove input/listeners de pausa antes de emitir onMatchComplete uma única vez. Config é copiada e congelada, incluindo objetos aninhados atuais; resultado também é congelado. Não envia GameState/Maps à UI.
+- Simulação usa defeated; contrato externo usa player_defeated, com conversão explícita em Game. React apresenta o motivo recebido sem inferir pela vida/pontos. Labels Time Expired/Ship Destroyed.
+- elapsedSeconds já vem dos deltas de simulação ativos; pausa não conta. Time-up usa duração configurada exata; morte conserva tempo acumulado até o subpasso letal. Tela arredonda somente a apresentação a até duas casas de segundos; storage guarda precisão original.
+- Canvas encaminha callback por ref estável com guard cancelled. Tela Game navega com payload; App guarda resultado em memória, tenta persistir e mostra Result. Cleanup de Canvas destrói Game/Pixi/texturas/listeners como antes. Sem callback em destroy e sem novos updates React por frame.
+- Chave pirate-battle:last-completed-match:v1 guarda version:1/result. Leitura usa unknown, valida forma completa da config (incluindo objetos aninhados e números finitos não negativos), campos de resultado, datas, motivo permitido e coerência de tempo/HP. Time-up deve ter elapsed igual à duração; derrota exige HP zero. Valores inválidos não são completados com defaults, pois isso inventaria uma partida.
+- Ausência/JSON corrompido/versão desconhecida/dados inválidos/acesso negado retornam undefined; Result mostra No completed match is available. Falha de gravação não impede exibir resultado atual em memória, mas alerta que ele não sobreviverá ao refresh. Resultado anterior salvo continua intacto se escrita falhar.
+- App usa #result somente para restaurar essa tela no refresh, sem biblioteca de roteamento ou persistência de partida ativa. Outras navegações removem marcador; refresh durante combate abandona partida e volta ao menu. replaceState não implementa pilha completa de Back/Forward ou sincronização de hash editado durante sessão; não foi acrescentado router.
+- Quit agora navega ao Main Menu, sem resultado, persistência ou envio. Desmontagem/reload apenas liberam recursos da partida; completion é emitida somente por finishMatch. Assim abandono nunca substitui último CompletedMatch nem produz candidato de envio futuro.
+- Play Again remonta Game, lê Options atuais uma vez e cria Game/Pixi/estado/SpawnSystem novos. Não reutiliza config do resultado. Main Menu apenas navega e não cria partida.
+- Result mostra Not submitted yet e informa que nenhuma requisição de ranking/history foi feita. Não há retry/outbox/sucesso de servidor fictício. UUID/data/config preparam a próxima integração; identidade do jogador e ampliação dos contratos HTTP atuais ainda precisarão ser definidos. Hooks/API/MSW foram inspecionados e não chamados.
+- MatchHistory recebeu somente ajuste de tipos: seu motivo vem do domínio (inclui quit para fixtures antigas), não do contrato de conclusão. Comportamento e APIs de histórico permaneceram iguais.
+
+**Por que foi feito dessa forma:** conclusão pertence à simulação e abandono ao descarte do recurso, com caminhos separados. Persistência local não equivale a registro remoto. Guard do finish e callback único evitam duplicação sem event bus. Snapshot final desacopla UI de estado contínuo.
+
+**O que eu preciso entender:** implementação pelo Codex em colaboração. Revisar contrato sem quit, callback único, conversão de motivo, precisão temporal, configuração copiada/congelada, validação de JSON, URL mínima para refresh e diferença entre salvar localmente e registrar em API.
+
+**Como testar manualmente:**
+
+1. Concluir por morte: Result deve mostrar score real, kills válidos, HP final no payload, Ship Destroyed e tempo ativo anterior à morte. Pausar por vários segundos durante a partida não deve aumentar Active Time Played.
+2. Concluir por tempo: salvar duração 60 em Options, jogar ou acelerar remaining no debugger; Result Time Expired mostra 60 s ativos e configuração daquela partida, não opções posteriores.
+3. Conferir Registration: Not submitted yet; Network não deve ter POST /api/matches disparado pela conclusão.
+4. Refresh em Result (#result): mesmos ID/data/pontos/tempo/config são restaurados. Inspecionar chave pirate-battle:last-completed-match:v1.
+5. Play Again: HUD limpo (HP máximo/score zero/tempo cheio), entidades novas. Alterar Options antes da nova partida: usar valores novos; resultado anterior mantém sua config antiga.
+6. Main Menu: apenas menu, sem novo loop. Iniciar partida e Quit: menu, sem Result falso e sem substituir chave da última conclusão. Repetir refresh durante combate: menu e último resultado preservado; visitar #result com refresh para conferi-lo.
+7. Corromper JSON, remover chave, usar endReason quit/versão desconhecida/config incompleta/tempo incoerente; carregar #result: estado vazio seguro, sem inventar score zero como partida concluída.
+8. Bloquear localStorage: resultado atual ainda aparece com aviso de falha; nenhuma confirmação de registro remoto. Repetir ciclos iniciar/concluir/Play Again e verificar limpeza/ausência de duplicações.
+
+**Possíveis perguntas de entrevista:**
+
+- Quem decide o resultado? “Game encerra a simulação e emite um snapshot final; React só navega e apresenta.”
+- Pausa conta no tempo? “Não; elapsed é acumulado pela simulação ativa, sem relógio externo.”
+- Como distingue abandono? “Quit/unmount não chamam completion; só derrota ou time-up geram CompletedMatch.”
+- Salvar localmente significa registrado? “Não. Status not_submitted informa que ainda falta envio HTTP.”
+- Como evita resultado repetido? “finishMatch só aceita running; depois de finished não emite novamente.”
+- Por que não usar config do último resultado no Play Again? “Nova partida deve capturar Options atuais; resultado é registro da config antiga.”
+
+**Validação:** revisão de fluxo/código; typecheck, lint e build passaram pelo npm-cli instalado. Launcher npm quebrado é preexistente. Build mantém aviso de chunk > 500 kB: principal 1.001,78 kB minificado. Nenhum teste manual de navegador ou E2E executado nesta tarefa.
+
+**Limitações:** somente última conclusão persistida, sem fila de envios nem player identity/API nova. Storage inacessível impede restauração após refresh e é sinalizado. Navegação continua local com marcador #result, sem router completo. Result usa estilo existente, sem redesign integral de assets. Validação de config confere campos numéricos/forma e coerência básica; resultado persistido nunca é usado para iniciar gameplay. Futuro contrato remoto ainda precisa incluir identidade/config/idempotência; fixture antiga de quit não foi enviada por este fluxo.
+
 ## 5. Conceitos importantes para estudar
+
+- **Snapshot final:** dados independentes capturados na conclusão, usados para UI/storage sem compartilhar estado contínuo.
+- **Conclusão vs abandono:** finish produz resultado; destroy libera recursos e não concede conclusão.
+- **Persistência local vs registro remoto:** salvar JSON permite refresh; não comprova envio nem confirmação de servidor.
+- **Identidade da partida:** UUID identifica conclusão para futura integração e prevenção de duplicação; protocolo remoto ainda não implementado.
 
 - **Draft vs opção salva:** edição local do formulário só passa a valer após Save; gameplay usa snapshot próprio.
 - **Persistência não confiável:** JSON parse não garante formato; tratar como unknown e validar tipos/faixas antes de usar.
@@ -1016,6 +1077,10 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 
 ## 6. Perguntas que eu deveria conseguir responder
 
+- **Como resultado chega à UI?** “Game emite callback uma vez; Canvas encaminha, Game screen navega e App persiste/apresenta.”
+- **Por que abandono não sobrescreve resultado?** “Sair chama cleanup, sem callback de conclusão ou gravação.”
+- **Como Play Again usa opções novas?** “Remonta Game e captura Options atuais, sem ler config do resultado anterior.”
+
 - **Como opções sobrevivem refresh?** “Save grava duas opções validadas em localStorage versionado; nova tela lê e valida antes de usar.”
 - **Por que partida ativa não muda?** “Tela captura config uma vez e Game.start copia; nenhum update consulta storage.”
 
@@ -1064,6 +1129,8 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 - **O que os testes automatizados garantem hoje?** “A abertura do menu e alguns caminhos de navegação. Não garantem que o jogo seja jogável.”
 
 ## 7. Pontos que ainda não domino
+
+- **Result implementado pelo Codex em colaboração:** revisar callback único, config congelada, tipo que exclui quit, validação completa de JSON, marcador #result e preparação de registro sem fingir sucesso de API.
 
 - **Options implementado pelo Codex em colaboração:** revisar validação de unknown, try/catch de storage, draft strings, sucesso/erro acessível, limites de spawn e momento da captura da configuração no Play Again.
 

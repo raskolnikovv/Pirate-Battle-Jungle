@@ -10,6 +10,7 @@ import { SpawnSystem } from '../systems/SpawnSystem';
 import { GameLoop } from './GameLoop';
 import type { GameFinishReason, GameState } from './GameState';
 import { createHudSnapshot, type GameHudSnapshot } from './GameHudSnapshot';
+import type { CompletedMatch } from '@/types/completedMatch';
 
 const PLAYER_ID = 'player';
 
@@ -42,6 +43,7 @@ export class Game {
   constructor(
     private readonly renderer: GameRenderer,
     private readonly onHudChange?: (snapshot: GameHudSnapshot) => void,
+    private readonly onMatchComplete?: (result: CompletedMatch) => void,
   ) {
     this.loop = new GameLoop({
       update: (deltaSeconds) => {
@@ -144,6 +146,7 @@ export class Game {
       weaponCooldowns: { front: 0, left: 0, right: 0 },
       nextProjectileId: 1,
       score: 0,
+      enemiesDefeated: 0,
       elapsedSeconds: 0,
       durationSeconds: config.sessionDuration,
       remainingSeconds: config.sessionDuration,
@@ -214,6 +217,23 @@ export class Game {
     this.state.finishReason = reason;
     this.input.detach();
     this.detachPauseListeners();
+    if (this.configSnapshot) {
+      const config = copyConfig(this.configSnapshot);
+      for (const value of Object.values(config)) {
+        if (typeof value === 'object') Object.freeze(value);
+      }
+      this.onMatchComplete?.(Object.freeze({
+        matchId: crypto.randomUUID(),
+        completedAt: new Date().toISOString(),
+        score: this.state.score,
+        enemiesDefeated: this.state.enemiesDefeated,
+        elapsedSeconds: this.state.elapsedSeconds,
+        endReason: reason === 'defeated' ? 'player_defeated' : 'time_expired',
+        playerHealth: this.state.players.values().next().value?.health ?? 0,
+        config: Object.freeze(config),
+        registrationStatus: 'not_submitted',
+      }));
+    }
   }
 
   private updateProjectiles(state: GameState, deltaSeconds: number, config: GameConfig): boolean {

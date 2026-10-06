@@ -5,10 +5,12 @@ import { destroyGameAssets, loadGameAssets, type GameAssets } from '@/game/asset
 import { Game } from '@/game/core/Game';
 import type { GameHudSnapshot } from '@/game/core/GameHudSnapshot';
 import { GameRenderer } from '@/game/rendering/GameRenderer';
+import type { CompletedMatch } from '@/types/completedMatch';
 
 interface GameCanvasProps {
   config?: GameConfig;
   onHudChange?: (snapshot: GameHudSnapshot | null) => void;
+  onMatchComplete?: (result: CompletedMatch) => void;
 }
 
 type CanvasStatus = 'loading' | 'ready' | 'error';
@@ -19,12 +21,13 @@ export interface GameCanvasControls {
 }
 
 export const GameCanvas = forwardRef<GameCanvasControls, GameCanvasProps>(function GameCanvas(
-  { config = DEFAULT_GAME_CONFIG, onHudChange }, ref,
+  { config = DEFAULT_GAME_CONFIG, onHudChange, onMatchComplete }, ref,
 ) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<CanvasStatus>('loading');
   const hudCallbackRef = useRef(onHudChange);
   const gameRef = useRef<Game | null>(null);
+  const completionCallbackRef = useRef(onMatchComplete);
 
   useImperativeHandle(ref, () => ({
     pause: () => gameRef.current?.pause(),
@@ -33,7 +36,8 @@ export const GameCanvas = forwardRef<GameCanvasControls, GameCanvasProps>(functi
 
   useEffect(() => {
     hudCallbackRef.current = onHudChange;
-  }, [onHudChange]);
+    completionCallbackRef.current = onMatchComplete;
+  }, [onHudChange, onMatchComplete]);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,6 +106,8 @@ export const GameCanvas = forwardRef<GameCanvasControls, GameCanvasProps>(functi
 
         game = new Game(renderer, (snapshot) => {
           if (!cancelled) hudCallbackRef.current?.(snapshot);
+        }, (result) => {
+          if (!cancelled) completionCallbackRef.current?.(result);
         });
         gameRef.current = game;
         game.start(config);

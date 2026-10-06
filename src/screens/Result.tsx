@@ -6,6 +6,7 @@ import type { GameResultPayload, ScreenName } from "@/app/navigationTypes";
 interface ResultProps {
   onNavigate: (screen: ScreenName) => void;
   result?: GameResultPayload;
+  storageError?: boolean;
 }
 
 const scoreCardStyle: CSSProperties = {
@@ -31,16 +32,21 @@ const buttonRowStyle: CSSProperties = {
   flexWrap: "wrap",
 };
 
-export function Result({ onNavigate, result }: ResultProps) {
-  const score = result?.score ?? 0;
-  const enemiesDefeated = result?.enemiesDefeated ?? 0;
-  const duration = result?.durationSeconds ?? 0;
-  const endReason = result?.endReason ?? "quit";
+export function Result({ onNavigate, result, storageError = false }: ResultProps) {
+  if (!result) {
+    return <ScreenLayout title="Match Results">
+      <p role="status">No completed match is available.</p>
+      <div style={buttonRowStyle}><NavButton onClick={() => onNavigate("main-menu")}>Main Menu</NavButton></div>
+    </ScreenLayout>;
+  }
+  const score = result.score;
+  const enemiesDefeated = result.enemiesDefeated;
+  const duration = result.elapsedSeconds;
+  const endReason = result.endReason;
 
   const reasonLabel: Record<GameResultPayload["endReason"], string> = {
     time_expired: "Time Expired",
     player_defeated: "Ship Destroyed",
-    quit: "Match Abandoned",
   };
 
   return (
@@ -66,7 +72,7 @@ export function Result({ onNavigate, result }: ResultProps) {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1fr 1fr",
+            gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
             gap: 16,
             marginBottom: 16,
           }}
@@ -81,14 +87,21 @@ export function Result({ onNavigate, result }: ResultProps) {
           </div>
           <div style={statCardStyle}>
             <p style={{ color: "#94a3b8", fontSize: 14, marginBottom: 4 }}>
-              Survival Time
+              Active Time Played
             </p>
             <p style={{ fontSize: 32, fontWeight: 700, color: "#4ade80" }}>
-              {duration}s
+              {Number(duration.toFixed(2))}s
             </p>
           </div>
         </div>
 
+        <section aria-label="Match details" style={{ lineHeight: 1.8 }}>
+          <p>Registration: <strong>{result.registrationStatus === 'not_submitted' ? 'Not submitted yet' : result.registrationStatus}</strong></p>
+          <p>This match has not been sent to the ranking or match history.</p>
+          <p>Session time: {result.config.sessionDuration}s · Enemy spawn time: {result.config.enemySpawnInterval}s</p>
+          <p>Completed: <time dateTime={result.completedAt}>{new Date(result.completedAt).toLocaleString('en-US')}</time></p>
+          {storageError && <p role="alert">Unable to save this result locally. It remains available until you reload.</p>}
+        </section>
         <div style={buttonRowStyle}>
           <NavButton onClick={() => onNavigate("game")}>Play Again</NavButton>
           <NavButton onClick={() => onNavigate("ranking")} variant="secondary">

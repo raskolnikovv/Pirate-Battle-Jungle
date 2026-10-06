@@ -14,7 +14,10 @@ export class CombatSystem {
       enemy.health = Math.max(0, enemy.health - event.damage);
       if (enemy.health === 0) {
         state.enemies.delete(enemy.id);
-        if (event.isPlayerOwned) state.score += config.enemyKillRewards[enemy.type];
+        if (event.isPlayerOwned) {
+          state.score += config.enemyKillRewards[enemy.type];
+          state.enemiesDefeated += 1;
+        }
       }
     } else if (event.type === 'projectile-player') {
       const player = state.players.get(event.targetId);

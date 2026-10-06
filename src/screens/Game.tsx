@@ -39,12 +39,7 @@ export function Game({ onNavigate }: GameProps) {
       value: hud ? formatRemainingTime(hud.remainingSeconds) : "--:--" },
   ];
   const handleQuit = () => {
-    onNavigate("result", {
-      score: 0,
-      enemiesDefeated: 0,
-      durationSeconds: 0,
-      endReason: "quit",
-    });
+    onNavigate("main-menu");
   };
 
   return (
@@ -96,7 +91,8 @@ export function Game({ onNavigate }: GameProps) {
           padding: 16,
         }}
       >
-        <GameCanvas config={matchConfig} ref={gameControlsRef} onHudChange={setHud} />
+        <GameCanvas config={matchConfig} ref={gameControlsRef} onHudChange={setHud}
+          onMatchComplete={(result) => onNavigate("result", result)} />
       </main>
       <section className="match-controls" aria-labelledby="keyboard-controls-title">
         <h2 id="keyboard-controls-title">Keyboard controls</h2>

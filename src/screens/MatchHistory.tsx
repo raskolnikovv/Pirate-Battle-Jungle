@@ -2,8 +2,8 @@ import type { CSSProperties } from "react";
 import { NavButton } from "@/components/NavButton";
 import { ScreenLayout } from "@/components/ScreenLayout";
 import { useHistory } from "@/hooks/useApi";
-import type { MatchHistoryEntry } from "@/types/domain";
-import type { GameResultPayload, ScreenName } from "@/app/navigationTypes";
+import type { MatchHistoryEntry, MatchEndReason } from "@/types/domain";
+import type { ScreenName } from "@/app/navigationTypes";
 
 interface MatchHistoryProps {
   onNavigate: (screen: ScreenName) => void;
@@ -33,13 +33,13 @@ const centerColStyle: CSSProperties = {
   color: "#94a3b8",
 };
 
-const reasonLabel: Record<GameResultPayload["endReason"], string> = {
+const reasonLabel: Record<MatchEndReason, string> = {
   time_expired: "Time Expired",
   player_defeated: "Defeated",
   quit: "Quit",
 };
 
-const reasonColor: Record<GameResultPayload["endReason"], string> = {
+const reasonColor: Record<MatchEndReason, string> = {
   time_expired: "#4ade80",
   player_defeated: "#f87171",
   quit: "#94a3b8",
@@ -114,13 +114,13 @@ export function MatchHistory({ onNavigate }: MatchHistoryProps) {
                         textAlign: "right",
                         color:
                           reasonColor[
-                            entry.endReason as GameResultPayload["endReason"]
+                            entry.endReason as MatchEndReason
                           ],
                       }}
                     >
                       {
                         reasonLabel[
-                          entry.endReason as GameResultPayload["endReason"]
+                          entry.endReason as MatchEndReason
                         ]
                       }
                     </td>

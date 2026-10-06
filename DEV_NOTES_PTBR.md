@@ -1,0 +1,700 @@
+# Diário Técnico — Pirate Battle
+
+> Caderno pessoal de estudo, fora da documentação oficial do produto. Registro o estado encontrado em 06/10/2026. A autoria das implementações preexistentes não está registrada nos arquivos; não vou atribuí-las a Manual, Codex, Trae ou trabalho colaborativo sem evidência. Esta primeira versão do diário foi escrita com auxílio do Codex.
+
+## 1. Visão geral do projeto
+
+Pirate Battle é uma aplicação web que pretende ser um jogo 2D de combate naval visto de cima. A base usa React 19, TypeScript em modo estrito e PixiJS 8 para a parte gráfica. Vite serve e empacota a aplicação. TanStack Query, Axios e MSW formam a base da comunicação HTTP simulada; Playwright está configurado para testes E2E.
+
+A arquitetura planejada separa a interface e navegação React da simulação e renderização contínuas do jogo. O React deve cuidar de telas, menus e dados remotos; PixiJS deve desenhar a arena e o código de jogo deve atualizar o estado em um loop próprio, sem re-renderizar o React a cada frame.
+
+Já existem telas de menu, opções, jogo, resultado, ranking e histórico; navegação local entre elas; endpoints e respostas simuladas para ranking, histórico e envio de partida; e um teste E2E básico. `GameCanvas` inicializa e destrói uma aplicação PixiJS, e `GameLoop` tem uma estrutura de timestep fixo.
+
+A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← e D/→. Space dispara pela proa; Q/E lançam três balas paralelas. Chaser e Shooter surgem periodicamente em posições validadas, com distribuição configurável e aleatoriedade reproduzível por seed. Chaser persegue e causa contato; Shooter para no alcance e dispara. Pontuação, barras de vida, fim de partida, sons e integração de gameplay com API continuam pendentes.
+
+## 2. Como a arquitetura funciona
+
+- **React:** monta o aplicativo e apresenta telas, navegação e controles de interface. Em `App`, a tela atual é escolhida por estado local. React guarda o status de loading do canvas, mas não recebe as coordenadas contínuas da partida.
+- **PixiJS:** `GameCanvas` inicializa uma `Application` com coordenadas lógicas 960 × 600 e resolução do dispositivo; o canvas é escalado via CSS mantendo proporção. O ticker automático do Pixi fica desligado para usar o loop do jogo.
+- **Game:** cria nave/ilha e mapa de inimigos vazio, copia a configuração (incluindo pesos) e cria um SpawnSystem novo por partida. Coordena input, loop, spawn, movimento, combate, colisão e renderer.
+- **GameLoop:** usa `requestAnimationFrame`, acumula tempo e chama `update` em passos fixos de 1/60 s; limita delta longo a 250 ms. Chama render em cada frame e calcula `alpha`, ainda não usado para interpolação.
+- **GameState:** guarda jogador, ilhas, mapas de inimigos/projéteis, cooldowns e contador de IDs. Vida, velocidades e colliders são dados lógicos; nenhum objeto Pixi fica no estado.
+- **GameRenderer:** repete água, compõe ilhas e desenha jogador, Chaser, Shooter e balas de ambas as equipes. Mapas por ID reutilizam sprites e destroem os removidos. Não calcula IA, colisão nem dano. Debug opcional desenha os colliders amarelos dos inimigos.
+- **InputManager:** captura W/↑, A/←, D/→, Space, Q e E enquanto a partida está montada; devolve um snapshot para a simulação. Previne o comportamento padrão dessas teclas e remove listeners/reseta o input ao destruir.
+- **Sistemas de gameplay:** `MovementSystem` move navios/balas; `CollisionSystem` detecta impactos; `CombatSystem` aplica dano/armas. `SpawnSystem` controla countdown, PRNG e IDs, valida posições e chama factories. Não contém IA.
+- **GameConfig:** inclui dimensões lógicas da arena e limite da nave. `Game.start(config)` copia os valores ao iniciar. Factories recebem valores explicitamente; nenhuma entidade busca secretamente `DEFAULT_GAME_CONFIG`.
+- **Axios:** cliente HTTP configurado com base `/api` e timeout de 10 segundos. As funções de endpoints usam esse cliente para ranking, histórico e submissão.
+- **TanStack Query:** hooks `useRanking` e `useHistory` consultam as telas e armazenam os resultados em cache. `useSubmitMatch` existe e invalida as consultas após sucesso, mas ainda não é chamado por uma tela.
+- **MSW:** em desenvolvimento, `main.tsx` inicia o worker no navegador; handlers interceptam ranking/histórico e devolvem fixtures paginadas, e o POST de partidas devolve um resultado montado a partir do corpo recebido. Isso não é um backend persistente.
+- **Playwright:** está configurado para abrir o Vite em Chromium e contém dois testes: presença dos botões do menu e navegação para o jogo/resultado/menu. Esses testes não demonstram que há gameplay real.
+
+**Fluxo existente da interface:** `main.tsx` inicia MSW em desenvolvimento e monta `App` dentro de `StrictMode` e `ReactQueryProvider`. `App` escolhe a tela. Ranking e histórico usam hooks TanStack Query → endpoints Axios → handlers MSW no ambiente de desenvolvimento.
+
+**Fluxo da partida:** `GameCanvas` carrega texturas e liga Pixi/renderer/jogo. Cada update fixo é subdividido quando necessário: movimento/IA → ilha → armas do jogador → impactos → armas dos Shooters → contato → spawn. Balas inimigas e inimigos novos iniciam movimento no próximo subpasso. `Game` coordena; sistemas alteram dados e renderer desenha. Coordenadas, vida, cooldowns e spawns não passam pelo estado React.
+
+## 3. Decisões técnicas
+
+### Separar a interface React da simulação do jogo
+
+**O que foi decidido:** React controla telas e navegação; a arquitetura reserva o estado contínuo e a renderização da partida para o código de jogo/PixiJS.
+
+**Por que fizemos assim:** uma partida atualiza muitas vezes por segundo. Manter cada posição como estado React poderia provocar renderizações de interface desnecessárias. Essa separação está registrada no `AGENTS.md` e agora é aplicada ao movimento inicial do jogador.
+
+**Alternativas possíveis:** implementar um jogo muito simples só com DOM/React; para a arena com sprites, PixiJS já é a tecnologia escolhida.
+
+**Como eu explicaria isso em uma entrevista:** “Eu deixaria o React responsável pelas telas e usaria o PixiJS para desenhar a partida. O estado que muda a cada frame ficaria no motor do jogo, para não atualizar toda a interface React continuamente.”
+
+### Usar um loop com passo fixo
+
+**O que foi decidido:** `GameLoop` acumula o tempo e chama a atualização com delta constante de 1/60 segundo; o desenho acontece a cada frame disponível.
+
+**Por que fizemos assim:** a simulação não deve depender diretamente da taxa de atualização do monitor. O loop limita atrasos grandes e calcula um fator `alpha`, embora a interpolação ainda não tenha sido implementada.
+
+**Alternativas possíveis:** atualizar usando todo o delta variável de cada frame, uma opção mais simples, mas que pode deixar a física e o movimento inconsistentes.
+
+**Como eu explicaria isso em uma entrevista:** “O `requestAnimationFrame` agenda os desenhos. Para a lógica não variar com o FPS, o loop acumula o tempo e executa updates em intervalos fixos; o `delta` é o tempo usado por cada passo.”
+
+### Separar dados de domínio dos sistemas
+
+**O que foi decidido:** jogadores, inimigos e projéteis têm interfaces TypeScript e ficam em mapas dentro de `GameState`; classes de sistemas representam etapas de processamento.
+
+**Por que fizemos assim:** os mapas permitem procurar e remover entidades por ID, e os tipos explícitos facilitam entender quais dados cada parte espera. Isso é a estrutura inicial, não um ECS completo.
+
+**Alternativas possíveis:** arrays para coleções pequenas ou um framework ECS. As regras do projeto priorizam soluções simples e não recomendam introduzir um framework ECS.
+
+**Como eu explicaria isso em uma entrevista:** “O estado da partida guarda entidades em mapas indexados por ID. Sistemas separados devem percorrer esses dados para aplicar movimento, spawn, colisão e combate.”
+
+### Usar TanStack Query para dados remotos
+
+**O que foi decidido:** ranking e histórico são obtidos por hooks TanStack Query; Axios faz as requisições HTTP.
+
+**Por que fizemos assim:** essas telas dependem de respostas assíncronas e cacheáveis. Já o estado de jogo é local, mutável e contínuo, então não é papel da query cache.
+
+**Alternativas possíveis:** usar `fetch` diretamente com estado React; seria viável, mas exigiria escrever manualmente estados de carregamento, erro e cache.
+
+**Como eu explicaria isso em uma entrevista:** “Uso TanStack Query para consultas remotas, como ranking, porque ele organiza loading, erro e cache. A posição do navio pertence à simulação local e não a uma consulta HTTP.”
+
+### Simular a API com MSW e testar fluxos com Playwright
+
+**O que foi decidido:** MSW intercepta chamadas `/api` em desenvolvimento; Playwright cobre alguns caminhos da interface em Chromium.
+
+**Por que fizemos assim:** a UI pode ser desenvolvida sem um servidor real. O teste E2E valida que a aplicação abre e que a navegação principal funciona.
+
+**Alternativas possíveis:** usar um backend local real ou mocks escritos diretamente dentro dos componentes; o MSW mantém a simulação na fronteira HTTP.
+
+**Como eu explicaria isso em uma entrevista:** “O MSW intercepta requisições como se fosse a API e devolve fixtures. O Playwright abre o navegador de verdade para conferir fluxos visíveis do usuário.”
+
+### Inicializar Pixi dentro do ciclo de vida do React
+
+**O que foi decidido:** `GameCanvas` usa ref para o container, inicializa Pixi e carrega o asset em `useEffect`, exibe estado de carregamento/erro e limpa jogo, input, renderer, textura e aplicação no cleanup. Uma flag `cancelled` cobre inicialização assíncrona após desmontagem. O ticker automático do Pixi fica desligado; o renderer é chamado pelo loop próprio.
+
+**Por que fizemos assim:** a aplicação Pixi é um recurso externo ao DOM React e precisa acompanhar a montagem/desmontagem do componente. Isso também importa porque o app usa `StrictMode`, que em desenvolvimento pode executar o ciclo de efeito mais de uma vez para revelar problemas de cleanup.
+
+**Alternativas possíveis:** envolver a criação em uma biblioteca de integração React/Pixi; atualmente o projeto faz a integração diretamente.
+
+**Como eu explicaria isso em uma entrevista:** “O `useEffect` cria o Pixi quando o canvas monta e o cleanup destrói a aplicação quando desmonta. A flag impede anexar ao DOM uma instância cuja inicialização terminou depois do cleanup.”
+
+### Capturar uma cópia da configuração no início da partida
+
+**O que foi decidido:** `Game.start(config)` copia os valores e objetos aninhados de `GameConfig`; a simulação e a criação do jogador usam essa cópia. `DEFAULT_GAME_CONFIG` serve como padrão quando nenhum config é fornecido.
+
+**Por que fizemos assim:** alterações posteriores no objeto de opções não devem mudar silenciosamente uma partida já iniciada. Factories recebem parâmetros explícitos em vez de importar a configuração global.
+
+**Alternativas possíveis:** usar um objeto global mutável ou enviar cada valor isolado para sistemas. A cópia tipada mantém os valores da partida agrupados e previsíveis.
+
+**Como eu explicaria isso em uma entrevista:** “No start, o jogo copia as opções para um snapshot. A partida usa esses valores até terminar, e os factories recebem a configuração explicitamente.”
+
+### Armas e cooldowns no estado da simulação
+
+**O que foi decidido:** projéteis são registros no `GameState`; Space/Q/E repetem enquanto pressionados. Cada arma tem cooldown próprio, reduzido pelo delta da simulação.
+
+**Por que fizemos assim:** o mesmo snapshot permite mover e disparar juntos. Laterais independentes permitem disparar Q e E simultaneamente e são simples de representar. O renderer apenas desenha; uma futura pausa poderá suspender cooldowns suspendendo updates.
+
+**Alternativas possíveis:** um disparo por keydown ou cooldown compartilhado pelas laterais. Ambos são viáveis, mas teriam comportamento diferente. `setTimeout` exigiria sincronização extra com pausa e desmontagem.
+
+**Como eu explicaria isso em uma entrevista:** “As teclas indicam a intenção de atacar. A simulação verifica o tempo restante de cada arma, cria entidades e o Pixi mostra essas entidades.”
+
+### Verificar o caminho do projétil contra a ilha
+
+Registro da decisão do marco #4. No marco #5, o teste foi ampliado para retornar a primeira entrada no círculo e comparar impactos de ilha/inimigo, conforme a Etapa 8.
+
+**O que foi decidido:** testar o segmento entre posição atual e próxima contra o círculo da ilha ampliado pelo raio da bala.
+
+**Por que fizemos assim:** verificar apenas a posição final pode perder uma colisão se a bala atravessar o obstáculo num update rápido. A geometria funciona com qualquer proprietário do projétil.
+
+**Alternativas possíveis:** subdividir cada movimento em passos pequenos ou verificar somente sobreposição final. O segmento evita depender da velocidade para escolher subpassos.
+
+**Como eu explicaria isso em uma entrevista:** “Procuro o ponto do caminho mais próximo do centro da ilha. Se a distância for menor que a soma dos raios, removo a bala.”
+
+### Inimigos com dados compartilhados e perseguição direta
+
+**O que foi decidido:** usar o registro `Enemy` existente com tipo, posição, rotação, raio, velocidade, vida e dano de contato. O Chaser é criado por factory; presença no Map indica que ainda participa do jogo.
+
+**Por que fizemos assim:** Chaser e futuro Shooter precisam dos mesmos dados básicos, mas não exigem herança. O SpawnSystem poderá chamar a mesma factory; neste marco só há um inimigo determinístico.
+
+**Alternativas possíveis:** classes para cada navio ou sistema de pathfinding. A perseguição direta com correção de colisão é suficiente para estudar a base e mantém o escopo pequeno.
+
+**Como eu explicaria isso em uma entrevista:** “Os inimigos compartilham uma interface de dados. O sistema escolhe o comportamento pelo tipo; hoje só executa a perseguição do Chaser.”
+
+### Primeiro impacto e remoção imediata
+
+**O que foi decidido:** escolher a menor fração de entrada no caminho da bala entre ilha e inimigos. Empates favorecem ilha; entre inimigos, a ordem de inserção no Map. Cada bala é consumida antes de aplicar dano, e inimigos mortos são removidos imediatamente.
+
+**Por que fizemos assim:** uma ilha deve bloquear um inimigo atrás dela, mas não bloquear artificialmente um alvo atingido antes dela. A próxima bala já enxerga o estado atualizado; inimigo morto não causa contato no mesmo subpasso.
+
+**Alternativas possíveis:** dar prioridade absoluta às ilhas ou acumular eventos e aplicar depois. Ambas exigiriam cuidado adicional para evitar resultados errados ou alvos mortos ainda consumindo balas.
+
+**Como eu explicaria isso em uma entrevista:** “Calculo qual collider foi atingido primeiro. Removo a bala e aplico um único impacto antes de processar a próxima.”
+
+### Shooter com alcance e cooldown individual
+
+**O que foi decidido:** o inimigo aproxima até o alcance, mantém mira no jogador e dispara na direção atual. Cada registro Shooter tem `fireCooldownRemaining`; `Enemy` usa uma união discriminada por `type` para exigir esse campo somente no Shooter.
+
+**Por que fizemos assim:** múltiplos Shooters futuros não devem compartilhar o relógio de disparo. O comportamento usa a base de inimigos existente e permanece fácil de explicar. Configuração de arma vem do snapshot; cooldown restante é estado da entidade.
+
+**Alternativas possíveis:** cooldown global, tiro guiado, previsão da posição futura ou movimento lateral. Mudariam a regra solicitada e adicionariam complexidade.
+
+**Como eu explicaria isso em uma entrevista:** “O Shooter calcula distância e aproxima só enquanto está fora do alcance. Cada um tem seu tempo restante de disparo; a bala mantém a direção calculada no momento do tiro.”
+
+### Reutilizar projéteis com alvos separados por equipe
+
+**O que foi decidido:** a mesma factory recebe somente os quatro parâmetros de projétil necessários. `isPlayerOwned` separa alvos válidos: jogador atinge inimigos, inimigo atinge jogador; ambos atingem ilhas.
+
+**Por que fizemos assim:** movimento, duração, primeiro impacto e desenho são iguais para as duas equipes. Não é necessário criar outro sistema de balas. `ownerId` identifica a origem sem exigir que o atirador continue vivo.
+
+**Alternativas possíveis:** arrays/factories separados para cada equipe ou um enum de várias facções. O boolean existente basta para duas equipes neste marco.
+
+**Como eu explicaria isso em uma entrevista:** “Reutilizei a entidade e a simulação de projéteis. Na colisão filtro os alvos pelo proprietário antes de escolher o primeiro impacto.”
+
+### Spawns com seed e tentativas limitadas
+
+**O que foi decidido:** SpawnSystem próprio de cada partida usa countdown da simulação, PRNG simples e pesos no snapshot. Rejeita posições inseguras; tenta no máximo 20 vezes e pula a oportunidade se não encontrar espaço.
+
+**Por que fizemos assim:** permite reproduzir sequências nos testes, preparar pausa por suspensão dos updates e impedir loops infinitos numa arena sem espaço. Factories criam inimigos; a IA existente continua responsável pelo comportamento.
+
+**Alternativas possíveis:** Math.random dificulta replay; escolher de uma lista fixa de pontos é simples, mas limita variedade. Um mapa espacial aumentaria a complexidade sem necessidade nesta arena.
+
+**Como eu explicaria isso em uma entrevista:** “Uso uma seed para gerar escolhas reproduzíveis. Antes de criar o inimigo, verifico geometria e distância; se todas as tentativas falham, aguardo o próximo intervalo.”
+
+## 4. Diário de implementação
+
+### Etapa 1 — Base da aplicação e telas
+
+**Status:** Concluído (telas e navegação); integração de gameplay pendente.
+
+**Responsável pela implementação:** Não identificado nos arquivos disponíveis; a autoria do código preexistente não está registrada. Não há histórico Git disponível nesta pasta para confirmar.
+
+**O que foi implementado:** Aplicação Vite/React/TypeScript, provider TanStack Query, navegação local entre menu, opções, jogo, resultado, ranking e histórico. O jogo apresenta canvas vazio, HUD fixo e botão de sair que envia resultado com zeros.
+
+**Arquivos principais envolvidos:** `src/main.tsx`, `src/app/App.tsx`, `src/app/ReactQueryProvider.tsx`, `src/screens/*`, `src/components/*`.
+
+**Como funciona:** `App` escolhe uma tela com base em `useState`; os handlers de botões trocam o nome da tela. O payload do resultado só é salvo ao navegar para resultado com dados.
+
+**Por que foi feito dessa forma:** O estado local do React é suficiente para uma navegação simples, sem roteador. Essa justificativa é uma leitura do desenho atual, não um registro histórico do autor.
+
+**O que eu preciso entender:** Renderização condicional, props e callbacks, `useState`, composição de componentes, desmontagem ao trocar de tela.
+
+**Como testar manualmente:** Rodar `npm run dev`; conferir menu e abrir opções, ranking, histórico e jogo; sair da partida e verificar a tela de resultado. No jogo, esperar ver canvas azul vazio e dados placeholder.
+
+**Possíveis perguntas de entrevista:**
+- Por que a tela atual usa estado local? “A navegação é pequena e local; `useState` atende sem adicionar um roteador.”
+- O jogo já funciona? “A tela e o canvas existem, mas a simulação ainda não está conectada; o botão de sair mostra um resultado fixo.”
+
+### Etapa 2 — Cliente HTTP, consultas e mock de API
+
+**Status:** Concluído como base; submissão existe, mas não está conectada à partida.
+
+**Responsável pela implementação:** Não identificado nos arquivos disponíveis.
+
+**O que foi implementado:** Cliente Axios, funções para ranking/histórico/submissão, hooks de query/mutation, fixtures paginadas e handlers MSW.
+
+**Arquivos principais envolvidos:** `src/api/*`, `src/hooks/useApi.ts`, `src/mocks/*`, `src/screens/Ranking.tsx`, `src/screens/MatchHistory.tsx`, `src/main.tsx`.
+
+**Como funciona:** As telas chamam hooks TanStack Query; os hooks usam funções Axios; em desenvolvimento, MSW intercepta `/api` no navegador e responde com fixtures. Sucesso na mutation invalida ranking e histórico.
+
+**Por que foi feito dessa forma:** Assim, a interface pode exercitar carregamento e respostas sem depender de backend. O envio de partida ainda não é acionado pelo jogo.
+
+**O que eu preciso entender:** Promises, estados de loading/erro, query key, cache e invalidação; diferença entre mock de API e backend.
+
+**Como testar manualmente:** Em desenvolvimento, abrir ranking e histórico e observar os dados de fixture. O POST pode ser exercitado quando a mutation for conectada a uma ação; no estado atual não há botão que a chame.
+
+**Possíveis perguntas de entrevista:**
+- O que TanStack Query resolve? “Gerencia consultas assíncronas e cache, incluindo estados de carregamento e erro.”
+- O MSW grava os resultados? “Não. O handler atual devolve uma resposta simulada; não persiste a partida.”
+
+### Etapa 3 — Canvas PixiJS e estrutura de partida
+
+**Status:** Em andamento (canvas, input, jogador e movimento implementados; outros sistemas pendentes).
+
+**Responsável pela implementação:** Não identificado nos arquivos disponíveis.
+
+**O que foi implementado na base original:** Criação assíncrona do `Application` em `GameCanvas`, loop fixo, contratos de estado/configuração, input por teclado e factories iniciais. A integração de gameplay foi concluída na Etapa 5 abaixo.
+
+**Arquivos principais envolvidos:** `src/components/GameCanvas.tsx`, `src/game/core/*`, `src/game/rendering/GameRenderer.ts`, `src/game/input/InputManager.ts`, `src/game/entities/*`, `src/game/systems/*`, `src/config/gameConfig.ts`, `src/types/domain.ts`.
+
+**Como funciona:** Neste registro inicial, as classes estavam separadas. A Etapa 5 registra a conexão e a fatia de movimento implementadas depois.
+
+**Por que foi feito dessa forma:** A estrutura separa responsabilidades para permitir evoluir simulação, input e desenho sem colocar atualização por frame no React. A justificativa segue o `AGENTS.md`; a Etapa 5 ligou essas peças para o movimento inicial, enquanto o restante do gameplay continua pendente.
+
+**O que eu preciso entender:** Lifecycle do Pixi, cancelamento de init assíncrona, fixed timestep, `delta time`, snapshot de input, interpolação e ownership da configuração. Spawn, colisão e combate continuam em scaffolding.
+
+**Como testar manualmente:** No estado original, abrir o jogo confirmava apenas que a área Pixi era montada e removida; navio e controles foram adicionados na Etapa 5.
+
+**Possíveis perguntas de entrevista:**
+- Por que a posição do navio não está em `useState`? “Ela pertence ao estado mutável da partida e é atualizada pelo loop; React não renderiza novamente a cada update.”
+- O `alpha` já interpola sprites? “Não. O loop calcula o valor, mas o renderer ainda não o usa.”
+
+### Etapa 4 — Testes E2E iniciais
+
+**Status:** Concluído como configuração e casos escritos; execução nesta inspeção não verificada.
+
+**Responsável pela implementação:** Não identificado nos arquivos disponíveis.
+
+**O que foi implementado:** Configuração Playwright para Chromium, servidor Vite de teste e dois casos para menu e navegação.
+
+**Arquivos principais envolvidos:** `playwright.config.ts`, `tests/app.spec.ts`, `package.json`.
+
+**Como funciona:** Playwright inicia/reutiliza o servidor e usa locators por papel/nome para verificar botões, títulos e transições de tela.
+
+**Por que foi feito dessa forma:** Os casos verificam comportamento externo da aplicação no navegador, além de checagens de tipo/build.
+
+**O que eu preciso entender:** E2E, locators acessíveis, asserções assíncronas e diferença entre testar navegação e testar regras de jogo.
+
+**Como testar manualmente:** Rodar `npm test` (Playwright pode exigir browser instalado). Os testes atuais verificam apenas menu e navegação; não cobrem gameplay.
+
+**Possíveis perguntas de entrevista:**
+- O que torna isso um teste E2E? “Ele abre o app em um navegador e verifica o fluxo da perspectiva do usuário.”
+- Esses testes validam colisões? “Não; colisões ainda não foram implementadas nem cobertas.”
+
+### Etapa 5 — Arena e movimento inicial do jogador
+
+**Status:** Concluído para o primeiro vertical slice.
+
+**Responsável pela implementação:** Codex, com base na arquitetura preexistente. A autoria das etapas anteriores continua não identificada.
+
+**O que foi implementado:** Conexão `GameCanvas → Game → GameLoop → InputManager → MovementSystem → GameRenderer → PixiJS`; carregamento centralizado do navio; mensagens de loading/erro; arena lógica fixa escalada responsivamente; spawn central; movimento para frente, rotação simultânea e limites; cópia de `GameConfig` por partida. Wrappers de entidades sem uso foram removidos.
+
+**Arquivos principais envolvidos:** `src/components/GameCanvas.tsx`, `src/game/assets/gameAssets.ts`, `src/game/core/Game.ts`, `src/game/input/InputManager.ts`, `src/game/rendering/GameRenderer.ts`, `src/game/systems/MovementSystem.ts`, `src/game/entities/*.ts`, `src/config/gameConfig.ts`.
+
+**Como funciona:** Após carregar a imagem, `GameCanvas` cria Pixi com 960 × 600 coordenadas lógicas, DPR do dispositivo e ticker automático desligado. `Game.start` copia a configuração, cria a nave e liga teclado/loop. O input é consultado por snapshot a cada update fixo. O renderer atualiza o sprite e chama `app.render()` no callback de render.
+
+**Por que foi feito dessa forma:** Coordenadas do jogo independem do tamanho CSS; o CSS preserva 8:5 e escala a área. O loop próprio controla update e render. Um único registro `Player` evita estado duplicado em wrapper.
+
+**O que eu preciso entender:** Vetores seno/cosseno para direção da nave, rotação em radianos, cópia de config, ciclo de vida da `Texture`, DPR versus tamanho CSS e eventos de teclado.
+
+**Como testar manualmente:** Rodar o app, clicar Start Game, aguardar o loading, então segurar W/↑ para avançar, A/← para girar à esquerda e D/→ para girar à direita; combinar W com uma tecla de rotação e verificar os limites da arena. Sair e entrar novamente para conferir limpeza/remontagem.
+
+**Possíveis perguntas de entrevista:**
+- Como a nave pode avançar e girar ao mesmo tempo? “O snapshot guarda cada tecla separadamente; no mesmo update aplico rotação e deslocamento.”
+- Por que manter coordenadas 960 × 600 se o canvas muda de tamanho? “São coordenadas lógicas; CSS escala preservando proporção, e o DPR aumenta a resolução interna.”
+- Como a aplicação Pixi desenha sem dois loops? “Desligo o ticker automático da Application e chamo `app.render()` pelo callback do GameLoop.”
+- Como um erro ao carregar o PNG aparece? “O loader rejeita; o efeito captura a falha e React mostra uma mensagem sem derrubar o app.”
+
+### Etapa 6 — Marco #3: arena e ilhas
+
+**Status:** Concluído.
+
+**Responsável pela implementação:** Colaborativo. A arquitetura, a abordagem de colisão e o escopo foram definidos colaborativamente; Codex implementou o código.
+
+**O que foi implementado:** Ilha com matriz explícita de 3 × 3 tiles, planta e rocha oficiais, água repetida com TilingSprite, collider circular independente da arte, resposta de deslizamento e debug opcional de colisão. Os registros das etapas anteriores foram preservados.
+
+**Arquivos principais envolvidos:** `src/game/entities/Island.ts`, `src/types/domain.ts`, `src/game/entities/Player.ts`, `src/game/core/GameState.ts`, `src/game/core/Game.ts`, `src/game/systems/CollisionSystem.ts`, `src/game/rendering/GameRenderer.ts`, `src/game/assets/gameAssets.ts`, `src/config/gameConfig.ts`, `src/components/GameCanvas.tsx`.
+
+**Como funciona:** A ilha nasce em (672, 240) na arena padrão 960 × 600. `Island` guarda ID, centro lógico, tiles com offsets locais e lista de círculos com offsets/raios. A composição ocupa 192 × 192; o collider da ilha tem raio 104 e o do jogador, 32. Ambos são valores explícitos em GameConfig. O renderer cria os sprites uma vez por ID, reutiliza as texturas e atualiza a posição do container. No cleanup, destrói recursivamente os display objects e depois libera as texturas carregadas.
+
+**Assets selecionados e identificação visual:** As funções abaixo foram identificadas olhando as imagens, a folha de inspeção e `preview.png`; os nomes numéricos originais foram mantidos. `tilesheets.txt` confirma tiles de 64 × 64. Não há nomes semânticos oficiais no metadata consultado, então as descrições são o mapeamento visual usado neste marco.
+
+| Arquivo em `public/assets/png/default/tiles` | Papel visual |
+| --- | --- |
+| `tile_6.png` | Canto superior esquerdo arredondado de areia, com grama no interior |
+| `tile_7.png` | Costa superior de areia e transição para grama abaixo |
+| `tile_9.png` | Canto superior direito arredondado |
+| `tile_38.png` | Costa esquerda, areia à esquerda e grama à direita |
+| `tile_39.png` | Grama interior com pequenas plantas |
+| `tile_41.png` | Costa direita, grama à esquerda e areia à direita |
+| `tile_54.png` | Canto inferior esquerdo |
+| `tile_56.png` | Costa inferior, grama acima e areia abaixo |
+| `tile_57.png` | Canto inferior direito |
+| `tile_65.png` | Rocha com detalhe verde e fundo transparente |
+| `tile_70.png` | Planta de folhas largas e fundo transparente |
+| `tile_73.png` | Água com ondas, repetida por toda a arena |
+
+A matriz é `[6, 7, 9] / [38, 39, 41] / [54, 56, 57]`. Ela reproduz, em escala menor, a areia periférica e grama central mostradas em `preview.png` e `sample.png`. A planta e a rocha seguem a decoração das referências; as imagens de referência completas não foram usadas como fundo porque já contêm barcos/efeitos compostos. O navio continua usando `png/default/ships/ship_1.png`.
+
+**Detecção e resposta:** Para cada círculo da ilha, calcula-se a distância quadrática entre seu centro mundial e o centro do navio. Há sobreposição quando essa distância é menor que o quadrado da soma dos raios. O sistema reposiciona o navio na direção que vai do centro da ilha até ele, até separar os círculos. O avanço tangencial permanece, produzindo deslizamento. A rotação permanece livre. Uma folga de 0,001 evita pequenas penetrações por arredondamento; se os centros coincidirem, usa-se uma direção de saída explícita. Deslocamentos por passo são subdivididos para não pular por cima do collider.
+
+**Por que foi feito dessa forma:** Círculos são fáceis de ajustar e explicar, e dispensam um motor de física. A arte determina a aparência; o collider determina a regra de movimento. O raio não é calculado a partir do PNG. Isso permite ajustar jogabilidade sem depender da transparência da imagem, da vela ou de plantas decorativas.
+
+**O que eu preciso entender:** Distância quadrática, soma dos raios, normal de contato, separação de círculos, projeção/deslizamento, subpassos, coordenadas locais/mundiais, Texture compartilhada e TilingSprite. Estas partes do código foram implementadas pelo Codex dentro das decisões colaborativas; revisar antes de apresentar em entrevista.
+
+**Como testar manualmente:**
+
+1. Iniciar o app e clicar Start Game. Conferir água, ilha à direita/acima do navio e ausência de sprites duplicados.
+2. Segurar D até a proa apontar para o centro da ilha; segurar W. Ao tocar a ilha, continuar segurando W por alguns segundos: o navio deve permanecer do lado de fora do círculo.
+3. Combinar W com A ou D para contornar a borda e observar deslizamento. Aproximar novamente em diagonal.
+4. Soltar W e girar junto da ilha. Depois apontar para o mar e avançar: o navio deve conseguir sair.
+5. Redimensionar a janela durante a partida. Posições e colisões lógicas devem permanecer iguais; só a exibição muda de tamanho.
+6. Sair e iniciar novamente duas vezes. Conferir que ilha, navio e velocidade não se duplicam.
+7. Para ver os círculos, mudar `SHOW_COLLISION_DEBUG` para `true` em `GameRenderer.ts`, usar desenvolvimento e recarregar a página. Verde é o jogador; vermelho é a ilha. O flag é falso por padrão e ignorado no build de produção.
+
+**Limitações:** Um único círculo aproxima uma ilha arredondada, sem seguir exatamente os cantos da areia. A vela/proa e alguns detalhes visuais podem sobrepor a costa sem penetrar o collider. O layout é estático e manual; não há editor/mapa genérico. A resposta foi validada para esta ilha isolada, sem prometer física completa para círculos sobrepostos ou obstáculos encostados nas bordas da arena. Não foram criados nem executados E2E neste marco.
+
+**Validação realizada:** Scripts typecheck, build e lint passaram. O aviso preexistente de bundle maior que 500 kB continua (chunk principal aproximadamente 979 kB). Os scripts foram executados pelo npm-cli instalado porque o launcher npm do ambiente aponta para um arquivo ausente. Verificações numéricas temporárias, sem arquivos de teste adicionados, passaram para contato frontal prolongado, aproximação diagonal, rotação em contato, recuperação de centros coincidentes e avanço rápido com subpassos. A composição foi inspecionada visualmente; o fluxo completo no navegador não foi testado por E2E.
+
+**Possíveis perguntas de entrevista:**
+
+- Por que o collider não precisa ter exatamente o mesmo formato do sprite? “Ele representa a região de bloqueio da jogabilidade; detalhes decorativos podem ser ignorados para deixar a regra simples e previsível.”
+- Por que a colisão não é calculada pelo GameRenderer? “O renderer só desenha. O sistema de colisão usa dados lógicos e funciona independentemente de sprites e tamanho da tela.”
+- Por que não usamos colisão pixel-perfect? “Ela aumenta custo e complexidade; círculos ajustáveis são suficientes para esta ilha e mais fáceis de estudar.”
+- Como o jogo impede o navio de atravessar uma ilha? “Verifica sobreposição após pequenos passos de movimento e afasta o navio até os círculos não se sobreporem.”
+- O que aconteceria se a posição do jogador fosse controlada pelo React? “Cada atualização poderia disparar renderizações da interface e misturar o ciclo da simulação com o ciclo do React.”
+
+### Etapa 7 — Marco #4: armas do jogador
+
+**Status:** Concluído.
+
+**Responsável pela implementação:** Colaborativo. Arquitetura, controles e comportamento das armas foram definidos colaborativamente; Codex implementou o código.
+
+**O que foi implementado:** tiro frontal e duas salvas laterais de três projéteis paralelos; repetição ao segurar, cooldowns independentes, movimento temporal, remoção por duração/borda/ilha e sprites reutilizados por ID. Nenhuma lógica de inimigos, dano aplicado, pontuação ou efeitos foi adicionada.
+
+**Arquivos principais envolvidos:** `src/config/gameConfig.ts`, `src/types/domain.ts`, `src/game/core/Game.ts`, `GameState.ts`, `src/game/input/InputManager.ts`, `src/game/entities/Projectile.ts`, `Island.ts`, `src/game/systems/CombatSystem.ts`, `MovementSystem.ts`, `CollisionSystem.ts`, `src/game/rendering/GameRenderer.ts`, `src/game/assets/gameAssets.ts` e este diário. Nenhum arquivo novo de código.
+
+**Como funciona:**
+
+- A bala é um registro com ID único na partida, posição, rotação/direção, velocidade, raio, dano, proprietário, `isPlayerOwned` e `lifetime` restante em segundos. Não guarda Sprite: as regras devem funcionar sem depender do desenho. O dano é somente dado reservado para integração futura.
+- Rotação zero aponta para cima. O vetor frontal é `F = (sin(r), -cos(r))`. O sinal negativo no Y vem das coordenadas da tela: Y cresce para baixo. A bala frontal nasce em `posição + F × 62`.
+- Esquerda usa `r - π/2`; direita usa `r + π/2`. Com o navio para cima, são vetores (-1, 0) e (1, 0). Todas as balas de uma salva compartilham a direção lateral, sem espalhamento angular.
+- Cada origem lateral é `posição + lateral × 38 + F × deslocamento`. Para três balas, deslocamentos são -24, 0, +24: posições ao longo do comprimento, separadas por 24 unidades.
+- `weaponCooldowns` no estado guarda front/left/right. O sistema subtrai `deltaSeconds`, limita a zero e permite disparar novamente quando pronto. Uma tolerância numérica de 1e-9 evita atrasar um update por resíduo decimal. Não usa timers nem React.
+- Após movimento/correção do navio, combate cria tiros com a posição/rotação atual. `MovementSystem` move inclusive os novos tiros usando velocidade × delta e reduz lifetime. Testa saída pelo centro da bala; ao expirar, sair ou intersectar ilha, deleta do mapa.
+- Colisão usa o ponto mais próximo do centro da ilha no segmento percorrido pela bala e compara distância quadrática com `(raio da ilha + raio da bala)²`. Fração do segmento limitada a [0, 1]; segmento sem movimento também é tratado. Isso inclui tiros nascidos dentro do collider.
+- Renderer cria Sprite de `cannon_ball.png` com anchor central, atualiza posições e destrói somente display objects removidos. Todos compartilham a textura do loader; o cleanup existente destrói a camada inteira antes de liberar texturas. Nova partida restaura cooldowns e contador de IDs.
+
+**Valores iniciais do snapshot:**
+
+| Campo | Valor | Unidade/função |
+| --- | --- | --- |
+| projectileSpeed | 400 | unidades lógicas/s |
+| projectileLifetime | 3 | segundos; alcance nominal 1200 |
+| projectileCollisionRadius | 5 | unidades lógicas; PNG oficial 10 × 10 |
+| projectileDamage | 25 | reservado, ainda não aplicado |
+| weaponCooldowns.primary | 0,3 | segundos entre tiros frontais |
+| weaponCooldowns.secondary | 1 | segundos por lateral, independentemente |
+| frontShotOffset | 62 | distância da origem frontal ao centro |
+| broadsideOffset | 38 | distância lateral ao centro |
+| broadsideProjectileCount | 3 | tiros paralelos por salva padrão |
+| broadsideSpacing | 24 | separação ao longo do navio |
+
+**Por que foi feito dessa forma:** reaproveita entidades simples, mapa existente e timestep fixo. Todos os valores ajustáveis vêm do snapshot. Separar direção da posição de origem permite formar uma salva paralela; guardar cooldowns como números permite futura pausa sem timers adicionais.
+
+**O que eu preciso entender:** esta implementação de código foi realizada pelo Codex. Estudar radianos, seno/cosseno, vetores perpendiculares, transformação de offsets locais, distância de ponto a segmento, mutação/remoção de Map e propriedade das texturas. A colisão por segmento é a parte matemática mais sofisticada deste marco.
+
+**Como testar manualmente:**
+
+1. Iniciar pelo Start Game. Sem girar, tocar Space: uma bala sai da proa e vai para cima. Segurar: repete aproximadamente a cada 0,3 s.
+2. Ainda apontando para cima, tocar Q: três balas vão para esquerda, alinhadas ao comprimento. E deve espelhar para direita. Segurar Q/E: salvas a cada 1 s; Q+E libera ambos os lados.
+3. Segurar W+Space; depois W+D+Q/E. Conferir movimento e disparo simultâneos e direção acompanhando a rotação no instante do tiro.
+4. Da posição inicial (480, 300), tocar E: as três balas caminham em direção à ilha à direita e desaparecem na região do collider, sem atravessá-la. Repetir mirando frontalmente com D e Space.
+5. Atirar para água livre: balas desaparecem ao sair da arena. Para isolar expiração, iniciar com `projectileSpeed: 40` e `projectileLifetime: 0.5` num snapshot temporário de desenvolvimento: devem sumir após cerca de 20 unidades. Esses valores são apenas procedimento, não alterações persistidas neste marco.
+6. Segurar as três armas por um minuto; conferir remoção contínua. Redimensionar e observar que direção/regra permanece igual. Soltar teclas: nenhum novo tiro.
+7. Sair e começar duas vezes; conferir ausência de balas antigas e duplicação de velocidade/salvas. Fora da partida, Space deve recuperar seu comportamento normal. Perder foco reseta teclas; não existe pausa implementada.
+
+**Limitações:** collider circular aproximado da ilha; bala some sem efeito de impacto. Teste de borda usa o centro, permitindo alguns pixels parcialmente fora. Configurações pressupõem valores válidos positivos e contagem inteira; Options ainda não expõe armas nem valida estes parâmetros. Salva padrão tem três balas, mas a contagem é ajustável por config. Teclas muito rápidas entre updates podem não ser vistas pelo snapshot; o comportamento escolhido favorece segurar. Sem interpolação, dano, efeitos ou pausa. O loop existente limita atrasos longos: independência do FPS não significa recuperar todo o tempo de aba suspensa. Fluxo de navegador e E2E não foram executados neste marco.
+
+**Possíveis perguntas de entrevista:**
+
+- Como você calcula para onde um tiro deve viajar? “Uso seno e cosseno da rotação lógica do navio para criar a direção; multiplico pela velocidade e pelo delta.”
+- Como você calcula o lado esquerdo/direito? “Subtraio ou somo π/2 à rotação; isso gira a direção em 90 graus.”
+- Por que o projétil não é apenas um Sprite do Pixi? “Ele tem regras como duração, colisão e proprietário. O Sprite só representa esses dados visualmente.”
+- Por que o cooldown não usa setTimeout? “Ele deve avançar com a simulação; suspender updates futuramente também suspenderá o cooldown.”
+- Como evita acumular projéteis para sempre? “Deleto os que expiram, saem da arena ou atingem ilhas; o renderer destrói os sprites correspondentes.”
+- Por que os tiros são independentes do FPS? “Movimento e cooldown usam segundos nos updates fixos; a frequência do desenho não define velocidade nem taxa de disparo.”
+
+**Validação realizada:** typecheck, build e lint passaram, usando o npm-cli instalado devido ao launcher npm quebrado do ambiente. Permanece o aviso preexistente de chunk maior que 500 kB (principal: 981,44 kB minificado). `sample.png`, `preview.png` e a bala oficial foram inspecionados. Uma composição estática externa ao repositório confirmou os lados e o alinhamento da salva com as fórmulas e assets; não é captura de gameplay no navegador. Nenhum teste E2E foi criado ou executado.
+
+### Etapa 8 — Marco #5, parte 1: base de inimigos e Chaser
+
+**Status:** Concluído.
+
+**Responsável pela implementação:** Colaborativo. Arquitetura, perseguição, colisão e escopo foram decididos colaborativamente; Codex realizou a implementação de código.
+
+**O que foi implementado:** um Chaser determinístico com perseguição, rotação, bloqueio por ilha/arena, vida, dano por tiros e autodestruição ao causar contato. Sem Shooter ativo, spawns, pontuação, HUD, barras de vida, efeitos, som, pausa, game over ou API.
+
+**Arquivos principais envolvidos:** `src/config/gameConfig.ts`, `src/types/domain.ts`, `src/game/entities/Chaser.ts`, `Shooter.ts`, `Island.ts`, `src/game/core/Game.ts`, `src/game/systems/MovementSystem.ts`, `CollisionSystem.ts`, `CombatSystem.ts`, `src/game/rendering/GameRenderer.ts`, `src/game/assets/gameAssets.ts` e este diário. Nenhum arquivo novo. A factory/config do Shooter recebeu somente os campos necessários para continuar compatível com a interface compartilhada; seu comportamento não foi implementado. GameState, Player e SpawnSystem já tinham a estrutura necessária e não foram modificados.
+
+**Como funciona:**
+
+- `Enemy` guarda ID, tipo, posição, rotação, raio, velocidade, health/maxHealth e contactDamage. Não guarda Pixi nem precisa de flag alive: removê-lo do Map o retira da simulação. Sistemas também ignoram health <= 0.
+- Chaser padrão: vida 50, velocidade 120 unidades/s, raio 32 e contato 20. `testSpawnX=480`, `testSpawnY=100`; padding de inimigo 66. Jogador começa (480, 300), vida 100/100 e raio 32; ilha (672, 240), raio 104. O spawn padrão não sobrepõe jogador ou ilha. O campo antigo `chaser.damage=15` permanece sem uso; contato usa `contactDamage`.
+- Foi escolhido `png/default/ships/ship_2.png`: vela preta com caveira, visualmente correspondente ao pirata inimigo presente em sample/preview. As referências não rotulam formalmente cada navio como Chaser/Shooter; a escolha é visual, não inferência só pelo nome.
+- IA calcula `(dx, dy) = jogador - inimigo`. Divide pela distância `hypot(dx, dy)` para obter direção unitária. Deslocamento = direção × velocidade × delta, limitado à distância restante; distância zero não divide. Sem normalização, quanto mais longe o jogador, mais rápido o inimigo andaria.
+- A rotação usa `atan2(dx, -dy)`, compatível com frente `(sin(r), -cos(r))` e eixo Y para baixo. O inimigo vira imediatamente para o alvo; não há velocidade angular de IA nesta etapa.
+- A mesma resolução circular de ilha agora processa jogador e inimigos. Subpassos consideram velocidade/raio de ambos, para evitar atravessar a ilha em passos grandes. O Chaser pode deslizar quando a aproximação tem componente tangencial, mas pode ficar bloqueado ao apontar diretamente para o centro do obstáculo.
+- Ordem de cada subpasso: mover jogador → perseguir com Chaser → corrigir ilha → atualizar armas → processar balas → processar contato. Movimento/cooldowns usam o delta do subpasso, sem acelerar ao subdividir.
+- Tiro testa segmento contra círculo ampliado pelo raio da bala. A função resolve a primeira raiz da interseção e retorna fração entre 0 e 1; se já nasce sobreposto, retorna 0. Escolhe o impacto de menor fração. Ilha ganha empate e bala não atinge um inimigo atrás dela.
+- `Game` remove a bala antes de pedir dano ao CombatSystem; dano é aplicado imediatamente. Com 25 por tiro, duas balas matam o Chaser de 50. Vida é limitada a zero, inimigo sai do Map e não participa de balas posteriores ou contato.
+- Contato compara distância quadrática com soma dos raios ao quadrado. Chaser vivo reduz player.health em 20 e é removido. A aplicação verifica novamente sua presença, impedindo dano repetido mesmo se um evento de contato fosse entregue novamente. Vida do jogador não fica negativa; chegar a zero ainda não encerra o jogo.
+- Renderer mantém mapa de sprites de inimigos com anchor central e textura compartilhada. Posição/rotação vêm do estado; ao remover a entidade, destrói o sprite. Cleanup da camada e texturas segue o lifecycle existente. Debug opcional adiciona círculo amarelo, desligado por padrão.
+
+**Por que foi feito dessa forma:** reutiliza mapas, factories, fixed timestep e colisão circular existentes. Mantém matemática explícita, aplicação de dano no CombatSystem e desenho separado. Processar cada impacto imediatamente evita fila com alvos já mortos. A escolha por dano de tiros antes de contato torna determinístico o caso de matar um inimigo encostando no jogador.
+
+**O que eu preciso entender:** código realizado pelo Codex neste marco colaborativo. Revisar normalização, `atan2`, convenção angular, soma dos raios, primeira raiz da interseção segmento/círculo, ordem de mutações do Map e remoção imediata. A matemática do primeiro impacto merece estudo específico antes da entrevista.
+
+**Como testar manualmente:**
+
+1. Start Game e não tocar em nada: Chaser preto aparece acima, aponta para baixo, aproxima-se e some ao encostar após cerca de 1,2 s. Vida lógica muda de 100 para 80 uma única vez; o HUD antigo não representa esse valor.
+2. Para inspecionar vida, abrir DevTools/Sources em desenvolvimento, colocar breakpoint em `CombatSystem.applyCollision` na atribuição de player.health e iniciar novamente. Inspecionar `state.players.get('player').health`, executar a atribuição e conferir 80; seguir execução e verificar ausência de novo contato. `Game.getState()` também permite inspeção onde a instância estiver acessível no debugger. Não foi criada variável global de debug.
+3. Reiniciar e imediatamente segurar Space, sem mover: duas balas devem eliminar o Chaser antes do contato. Breakpoint na atribuição de enemy.health permite conferir 50 → 25 → 0. O jogador permanece 100 e score permanece 0.
+4. Reiniciar e mover/girar: ele deve perseguir a posição atual com velocidade constante, acompanhando mudanças de direção. W é mais rápido que o Chaser, permitindo afastar-se para testar.
+5. Para cenário reproduzível de ilha, usar somente no debugger um breakpoint no fim de `createInitialState`: ajustar player para (440, 240) e chaser para (890, 240). Continuar: ele deve ficar bloqueado à direita da ilha sem atravessar. Mover o jogador para cima/baixo pode permitir deslizamento; não há promessa de contornar sozinho.
+6. No mesmo cenário, usar no debugger `projectileSpeed=30000` no snapshot e posicionar jogador (440, 240) com rotação π/2. Disparar Space: o tiro cruza distância grande, mas a ilha deve consumi-lo sem reduzir a vida do Chaser atrás dela. Alterações de debugger são locais e se perdem ao reiniciar/recarregar.
+7. No breakpoint de criação, configurar player.health=10; deixar contato acontecer. Conferir zero, nunca negativo; a partida continua porque game over está fora do escopo.
+8. Redimensionar; sair e iniciar duas vezes. Deve existir somente um Chaser novo, vida restaurada e nenhuma bala/sprite antigo. Debug de colisão opcional mostra jogador verde, Chaser amarelo e ilha vermelho.
+
+**Limitações:** perseguição direta pode ficar obstruída; não há pathfinding, suavização angular ou colisão entre inimigos. Círculos aproximam a arte. Colisão de balas trata inimigos na posição atual do subpasso, sem trajetória relativa contínua de ambos. Layout padrão mantém ilha longe das bordas; múltiplos obstáculos sobrepostos/perto das bordas não têm solução física geral. Config pressupõe raios positivos, posição de teste válida e demais valores válidos. Vida é inspecionável por debugger, sem feedback visual. HUD preexistente permanece placeholder. Nenhum fluxo completo de navegador/E2E foi executado.
+
+**Possíveis perguntas de entrevista:**
+
+- Como o Chaser sabe para onde ir? “Subtraio a posição dele da posição do jogador; isso dá o vetor em direção ao alvo.”
+- Por que normalizamos? “Para a direção ter comprimento um e a velocidade ser definida só pela configuração.”
+- E sem normalizar? “A distância aumentaria o tamanho do deslocamento, fazendo o inimigo correr mais quando longe.”
+- Como evita dano repetido? “Consumo a bala antes de aplicar dano; inimigo morto ou que já causou contato é removido imediatamente.”
+- Como uma ilha bloqueia um tiro? “Comparo o primeiro impacto no segmento entre ilha e inimigos; somente o mais próximo é processado.”
+- Por que IA não fica no React? “Ela atualiza continuamente dados locais em passos fixos; React cuida das telas e não precisa renderizar a cada movimento.”
+- Por que não implementou pathfinding? “Perseguição direta é suficiente para validar esta base; contornar obstáculos com navegação fica para uma necessidade futura.”
+
+**Validação realizada:** typecheck, build e lint passaram pelo npm-cli instalado (launcher npm do ambiente continua quebrado). Aviso preexistente de chunk > 500 kB permanece: principal 984,52 kB minificado. Verificações numéricas temporárias, sem arquivos de teste adicionados, executaram o Game e sistemas reais com renderer/RAF substituídos: contato único 100 → 80, morte por tiros sem contato/pontos, bloqueio prolongado pela ilha, limites da arena, primeiro impacto ilha/alvo e clamp de vida em zero passaram. Essas verificações não validam Pixi ou lifecycle no navegador. Nenhum E2E foi criado/executado.
+
+### Etapa 9 — Marco #5.3: Shooter
+
+**Status:** Concluído.
+
+**Responsável pela implementação:** Colaborativo. Comportamento, arquitetura e escopo foram definidos colaborativamente; Codex realizou a implementação de código. As etapas anteriores preservam seu registro histórico.
+
+**O que foi implementado:** um Shooter vermelho determinístico junto do Chaser; aproximação limitada ao alcance, mira contínua, cooldown individual, balas inimigas, dano no jogador, friendly fire desabilitado e remoção por tiros/ilha/duração/borda. Sem novos spawns, HUD, pontuação, efeitos, game over ou APIs.
+
+**Arquivos principais envolvidos:** `src/config/gameConfig.ts`, `src/types/domain.ts`, `src/game/entities/Shooter.ts`, `Projectile.ts`, `Island.ts`, `src/game/core/Game.ts`, `src/game/systems/MovementSystem.ts`, `CombatSystem.ts`, `CollisionSystem.ts`, `src/game/rendering/GameRenderer.ts`, `src/game/assets/gameAssets.ts` e este diário. Nenhum arquivo novo. Chaser/factory, GameState, SpawnSystem, GameCanvas e input não foram modificados.
+
+**Como funciona:**
+
+- Shooter usa os dados básicos de Enemy e acrescenta cooldown restante obrigatório quando `type === 'shooter'`. Não há herança nem Pixi no estado. A configuração permanece no snapshot; a factory recebe configuração explícita.
+- Asset `png/default/ships/ship_3.png`, vermelho com símbolo branco, inspecionado com sample/preview. É visualmente distinto do jogador branco e Chaser preto, sem afirmar que as referências rotulam formalmente os tipos. Bala é o mesmo `ship_parts/cannon_ball.png` oficial.
+- Nasce em (100, 300), separado do jogador (480, 300), Chaser (480, 100) e ilha (672, 240). Distância inicial de 380 permite observar 80 unidades de aproximação. Com jogador parado, chega a (180, 300) após aproximadamente 0,89 s e passa a disparar.
+- Distância é `hypot(player.x - enemy.x, player.y - enemy.y)`. `atan2(dx, -dy)` orienta mesmo parado. Shooter move por direção normalizada × velocidade × delta, limitado à distância que falta para entrar no alcance. Chaser mantém sua perseguição anterior.
+- A mira usa a posição atual, sem previsão. Origem da bala é centro do Shooter + direção normalizada × 62. A rotação/direção da bala fica fixa depois de criada, permitindo esquiva.
+- `fireCooldownRemaining` começa em zero, reduz pelo delta também fora do alcance e reseta para 1,5 s ao disparar. O sistema usa pequena tolerância numérica no limite de alcance/cooldown. Na futura pausa, parar updates suspenderá esse relógio; não há timers.
+- A factory de projétil aceita `Pick<GameConfig, ...>` dos quatro campos necessários, permitindo receber config geral ou `config.shooter`. Ambos geram a mesma entidade. IDs usam o mesmo contador da partida; bala inimiga tem `ownerId` do Shooter e `isPlayerOwned=false`.
+- Primeiro impacto compara a entrada no círculo em todo o segmento. Ilha participa para ambos os lados e ganha empate. Bala do jogador considera somente inimigos vivos; bala inimiga considera somente jogadores. Não há bala contra bala nem fogo amigo.
+- Bala é consumida antes do dano: inimiga reduz vida do jogador em 10 uma vez, limitada a zero; do jogador reduz vida do Shooter em 25. Dois impactos removem um Shooter de 50. Score continua sem alteração.
+- Ordem: movimento/IA, correção de ilha, armas do jogador, movimento/impacto de balas existentes, armas de Shooters sobreviventes, contato do Chaser. Assim, Shooter morto neste subpasso não dispara. Balas inimigas novas aguardam o próximo subpasso para mover; balas já disparadas continuam existindo mesmo após morte do proprietário.
+- Shooter reutiliza bloqueio de movimento com ilha e limites. Não recebe autodestruição ou dano de contato do Chaser. Sobreposição física com jogador não é resolvida neste marco e não remove o Shooter.
+- Renderer usa o mapa existente de inimigos e seleciona textura pelo tipo, sem recriar Sprite por frame. A mesma camada de balas desenha ambas as equipes; debug existente já cobre os dois colliders.
+
+**Valores finais em `config.shooter`:**
+
+| Campo | Valor | Função |
+| --- | --- | --- |
+| health | 50 | vida inicial/máxima |
+| speed | 90 | unidades lógicas/s |
+| collisionRadius | 32 | círculo do navio |
+| attackRange | 300 | distância entre centros |
+| fireCooldown | 1,5 | segundos por disparo |
+| projectileSpeed | 260 | unidades lógicas/s |
+| projectileDamage | 10 | dano no jogador |
+| projectileLifetime | 3 | segundos; alcance nominal 780 |
+| projectileCollisionRadius | 5 | raio da bala |
+| projectileSpawnOffset | 62 | distância da origem frontal |
+| testSpawnX / testSpawnY | 100 / 300 | posição determinística |
+
+Os antigos campos sem uso `fireRate`, `preferredDistance` e `damage` do Shooter foram substituídos por nomes explícitos. A configuração de Chaser e armas do jogador foi preservada.
+
+**Por que foi feito dessa forma:** alcance é uma decisão simples por distância, sem estados artificiais de IA. Separar cooldown por entidade prepara a factory para futuros spawns. Um único modelo de bala evita duplicar lifecycle/movimento; filtro de equipe e primeiro impacto mantêm as regras explícitas. Mira instantânea é mais simples e permite esquiva, sem predição.
+
+**O que eu preciso entender:** implementação de código pelo Codex. Revisar união discriminada TypeScript, narrowing por `type`, `Pick`, normalização, distância entre centros, direção armazenada na bala, ordem dos sistemas, cooldown independente e por que uma bala não precisa de proprietário vivo.
+
+**Como testar manualmente:**
+
+1. Start Game: preto aparece acima e vermelho à esquerda. Shooter aproxima e para por volta de x=180 se o jogador não mover. Ele aponta à direita e dispara aproximadamente a cada 1,5 s.
+2. Para isolar Shooter, segurar Space imediatamente e eliminar o Chaser. Depois observar as balas vindo da esquerda. HUD antigo não mostra vida real.
+3. Em DevTools/Sources, breakpoint na atribuição de health em `CombatSystem.applyCollision`, ramo `projectile-player`: inspecionar `state.players.get('player').health`. Cada impacto reduz 10, sem repetir após remoção; chegar a zero ainda não encerra a partida.
+4. Depois de eliminar o Chaser, usar W para mover perpendicularmente aos tiros. Uma bala já disparada segue reta; a mira do Shooter acompanha o novo alvo. Ao ficar além de 300, ele volta a aproximar.
+5. Reiniciar, eliminar Chaser e segurar Q sem girar: duas balas válidas devem matar Shooter. Algumas balas inimigas em voo podem continuar e atingir o jogador após essa morte; isso é esperado. Score permanece zero.
+6. Para cobertura reproduzível, breakpoint no fim de `createInitialState`, usar `this.state` não é possível porque ainda não foi atribuído: ajustar as variáveis locais `player` para (520, 240) e `shooter` para (820, 240), e retirar Chaser pelo Map do estado após o start via debugger. Shooter em alcance aponta através da ilha; as balas nascem dentro do collider e devem ser consumidas sem atingir o jogador.
+7. Para observar bloqueio de movimento, posicionar via debugger jogador (440, 240) e Shooter (890, 240), sem Chaser. Ele tenta aproximar, mas não atravessa a ilha. Mudar a posição do jogador pode permitir deslizar; não há navegação planejada.
+8. Para primeiro impacto em velocidade alta, usar via debugger `this.configSnapshot.shooter.projectileSpeed=30000` e `attackRange=600`, jogador (440, 240), Shooter (890, 240). Ilhas devem consumir tiros antes do jogador, mesmo num segmento grande. Ajustes de debugger não são persistidos.
+9. Mover sobre o Shooter: não deve ocorrer autodestruição nem dano de contato; ainda pode haver tiros. Redimensionar, sair e iniciar duas vezes: sempre um Chaser e um Shooter novos, sem balas antigas ou duplicação.
+
+**Limitações:** sem pathfinding, recuo, movimento lateral, previsão ou velocidade angular. Shooter pode ficar bloqueado pela ilha; pode sobrepor jogador/inimigos. Com jogador muito próximo, a origem frontal pode ficar além dele e tiros podem errar. Não há verificação de linha de visão antes de disparar: ilha consome o tiro. Balas de ambas as equipes têm a mesma arte. Config presume valores válidos. Colisão trata alvos na posição atual do subpasso. Não existe pausa/game over nem feedback de vida; interface continua placeholder. Nenhum fluxo completo de navegador/E2E foi executado.
+
+**Possíveis perguntas de entrevista:**
+
+- Como decide quando parar? “Calcula a distância e só avança a parte que falta para entrar no alcance.”
+- Como mira no jogador? “Normaliza jogador menos Shooter e usa essa direção para origem, rotação e movimento da bala.”
+- Por que o tiro não acompanha o jogador? “Sua direção é definida uma vez no disparo; não existe atualização de mira na entidade da bala.”
+- Por que cada Shooter tem cooldown próprio? “Cada inimigo precisa poder disparar sem depender do relógio dos outros.”
+- Como reutilizou projéteis? “Mesma factory, entidade, movimento, lifetime e renderer; apenas config e alvos válidos mudam.”
+- Como ilha vira cobertura? “Ela disputa o primeiro impacto no segmento; se está antes do jogador, consome a bala.”
+- Como impede fogo amigo? “Bala inimiga não verifica inimigos como alvos, apenas jogador e ilhas.”
+- Qual a diferença arquitetural de Chaser e Shooter? “Compartilham dados e colisões básicas; Chaser persegue até contato, Shooter para no alcance e possui cooldown de arma.”
+
+**Validação realizada:** typecheck, build e lint passaram pelo npm-cli instalado; launcher npm quebrado é condição preexistente do ambiente. Aviso de chunk > 500 kB permanece (principal 986,16 kB minificado). Verificações numéricas temporárias, sem arquivos de teste adicionados, executaram Game/sistemas reais com renderer/RAF substituídos: aproximação/parada/mira, direção fixa das balas, cooldown individual, dano único/clamp, morte com dois tiros, primeiro impacto/filtro de equipes e regressão do contato do Chaser passaram. Assets/referências foram inspecionados visualmente. Não houve execução de gameplay no navegador nem E2E; lifecycle e desenho não são garantidos por essas verificações numéricas.
+
+### Etapa 10 — Marco #6: Spawn System
+
+**Status:** Concluído.
+
+**Responsável pela implementação:** Colaborativo. Distribuição 60/40, estratégia determinística, arquitetura e regras foram decididas colaborativamente; Codex implementou o código.
+
+**O que foi implementado:** criação periódica de inimigos por SpawnSystem, escolha ponderada com seed, validação de posição, tentativas limitadas e reset por partida. Removidos os dois inimigos temporários do start e os campos testSpawnX/Y. As etapas 8 e 9 preservam o registro do comportamento temporário daquele momento; seus testes de posição fixa precisam agora ser preparados via debugger/factory.
+
+**Arquivos principais envolvidos:** criado `src/game/core/SeededRandom.ts`; modificados `src/config/gameConfig.ts`, `src/game/core/Game.ts`, `src/game/systems/SpawnSystem.ts` e este diário. Factories, tipos de entidades, GameState, IA, combate, colisões, renderer e assets foram reaproveitados sem alteração.
+
+**Como funciona:**
+
+- Partida começa sem inimigos; primeira tentativa após 3 s de simulação. Countdown fica no SpawnSystem e diminui pelo delta de cada subpasso. Ao vencer, tenta uma criação e soma o intervalo ao restante, preservando o pequeno atraso entre ticks. Se um update excepcional vence vários intervalos, faz somente uma tentativa e descarta a dívida restante; não gera rajada atrasada.
+- `SeededRandom` usa LCG: estado seguinte = `(1664525 × estado + 1013904223) mod 2³²`. `Math.imul` e `>>> 0` fazem a aritmética de 32 bits; dividir por 2³² retorna valor em [0, 1). Essas constantes pertencem ao algoritmo, não ao balanceamento. Seed inteira é convertida para unsigned de 32 bits, inclusive zero; números equivalentes módulo 2³² geram a mesma sequência. Não é criptografia.
+- Cada oportunidade consome um valor para o tipo: sorteio × soma dos pesos menor que peso Chaser escolhe Chaser, senão Shooter. Pesos 60/40 produzem probabilidades 60%/40%, sem garantir essa proporção exata em poucas tentativas. Também aceita 1/0 e 0/1.
+- Tipo é escolhido uma vez; cada tentativa de posição consome dois números, X e Y uniformes dentro do retângulo permitido. Margem efetiva é `max(raio do inimigo, enemySpawnMargin, enemyBoundaryPadding)`: o círculo cabe e a posição respeita o mesmo limite da IA.
+- Rejeita posição fora da arena, sobreposta a qualquer collider de ilha, muito próxima do jogador ou sobreposta a inimigo vivo. Distância ao jogador precisa superar `max(320, raio inimigo + raio jogador)`. Ilha usa centro mundial e soma dos raios; tangência também é rejeitada por segurança. Inimigo com vida zero não bloqueia posição.
+- Depois de no máximo 20 posições rejeitadas, nada é criado; próxima oportunidade permanece no intervalo normal. Arena menor que a margem necessária também pula o spawn. Não usa while infinito, timers ou bounds Pixi.
+- IDs `enemy-1`, `enemy-2` etc. avançam somente após spawn válido, sem sortear ID. Factory Chaser/Shooter existente recebe config do snapshot; rotação inicial aponta para o jogador. Nenhuma IA foi copiada para SpawnSystem.
+- Game chama spawn no fim do subpasso, após combate/contato; o novo inimigo preserva a posição validada e passa a agir no próximo. Renderização já reconhece as novas entidades pelo mapa/ID. `state.isRunning=false` impede avanço do spawn; GameLoop parado não chama updates.
+- Novo start cria outro SpawnSystem: countdown, estado do PRNG e contador retornam ao início. Destroy libera a referência. Config copia também `enemySpawnWeights`, impedindo mudança externa da distribuição no meio da partida.
+- `SeededRandom.next`, `SpawnSystem.update/isValidPosition` e `Game.getState` permitem verificações de código. Não existe debug UI nem variável global em window.
+
+**Valores finais:**
+
+| Campo de GameConfig | Valor | Significado |
+| --- | --- | --- |
+| enemySpawnInterval | 3 | segundos de simulação; preservado |
+| enemySpawnWeights | Chaser 60 / Shooter 40 | pesos relativos |
+| enemySpawnMinimumDistance | 320 | distância entre centros |
+| enemySpawnMaxAttempts | 20 | posições por oportunidade |
+| enemySpawnMargin | 66 | margem mínima do centro à borda |
+| enemySpawnSeed | 12345 | sequência padrão reproduzível |
+
+Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma zero, tentativas não inteiras positivas, seed não inteira e margem/distância inválidas. Não é validação completa de todo GameConfig. `enemySpawnInterval` mantém nome e unidade para futura Options; a tela atual ainda é scaffolding e não salva/aplica esse valor. Não foi integrada neste marco.
+
+**Por que foi feito dessa forma:** spawn é criação e validação, não comportamento. Seed fixa facilita estudar/reproduzir problemas. Distância 320 evita contato imediato e está além do alcance padrão 300 do Shooter. Limite de tentativas impede travamento; pular é melhor que forçar posição inválida.
+
+**O que eu preciso entender:** código pelo Codex neste marco colaborativo. Revisar aritmética unsigned/Math.imul, seed versus estado do gerador, pesos relativos, teste de distância quadrática, efeito das rejeições no consumo aleatório e reset de lifecycle. Mesma seed sozinha não garante replay se jogador/config/obstáculos ou ordem de chamadas mudarem.
+
+**Como testar manualmente:**
+
+1. Start Game: arena começa sem inimigos. Após cerca de 3 s, aparece o primeiro; há nova oportunidade aproximadamente a cada 3 s, enquanto houver posição válida.
+2. Sem mover antes do primeiro spawn e com config padrão, primeiro é Chaser perto de (79,70; 320,20), ID enemy-1. Repita saindo e iniciando: esse primeiro resultado deve ser igual. Não compare posições posteriores após inputs diferentes.
+3. Jogue por 30–60 s, usando W/A/D e Space/Q/E: observar Chasers perseguindo, Shooters parando/disparando e ambos recebendo dano. Cada aparição deve estar longe da posição atual do jogador e fora da ilha/bordas.
+4. DevTools/Sources, breakpoint em `SpawnSystem.update` na inserção no Map: inspecionar x/y, tipo, ID e raio antes da criação; confirmar `isValidPosition(state,x,y,radius)` e cooldown individual dos Shooters criados.
+5. Para cenário sem espaço, no debugger antes da primeira tentativa aumentar o raio do collider da ilha para 10000. Após 20 tentativas, não deve nascer inimigo nem travar. Restaurar raio 104: próxima oportunidade poderá criar normalmente.
+6. Para variar sequência, alterar `enemySpawnSeed` no config fornecido a uma nova partida (ou via debugger antes de construir SpawnSystem). Usar 54321 deve produzir sequência diferente. Alterar seed depois da construção não reseta o gerador.
+7. Testar snapshot de desenvolvimento com intervalo 1 s e pesos 1/0, depois 0/1: muda frequência/tipo sem alterar IA. Não há controles de Options para isso ainda.
+8. Redimensionar durante o jogo: apenas exibição muda. Sair e reiniciar duas vezes: espera inicial continua 3 s, ID recomeça em enemy-1, sem aceleração/entidades anteriores. Os ajustes de debugger não são persistidos.
+
+**Limitações:** seed padrão fixa gera a mesma sequência quando o restante da simulação é igual; variedade entre partidas exige fornecer outra seed. Não força ambos os tipos nem proporção exata em toda sequência curta. Spawn válido considera círculos, não contorno completo da arte. Sem limite adicional de inimigos vivos, partida infinita pode acumular entidades; falta de espaço apenas pula spawns. Não há garantia de rota até o jogador, prevenção de aglomeração após nascer ou balanceamento de dificuldade. Intervalos menores que um subpasso ficam limitados a uma tentativa por subpasso. Game over/pausa continuam pendentes, inclusive vida zero não interrompe spawns. Testes numéricos não validam navegador/lifecycle Pixi.
+
+**Possíveis perguntas de entrevista:**
+
+- Por que não usa setInterval? “O spawn avança pelo delta da simulação; ao suspender updates, seu relógio também para.”
+- Por que usar seed? “Permite repetir as escolhas aleatórias com a mesma sequência de chamadas e reproduzir um problema.”
+- Como evita nascer dentro da ilha? “Comparo distância ao centro de cada collider com a soma dos raios.”
+- Como evita nascer em cima do jogador? “Exijo distância mínima configurada e também separação dos círculos.”
+- Por que limitar tentativas? “Pode não existir espaço livre; o limite garante que o update termine e tente novamente depois.”
+- Qual a diferença entre spawn e IA? “Spawn cria a entidade numa posição válida; IA decide seu movimento e ataque depois.”
+- Como testar algo aleatório? “Fixo seed, config, estado e deltas, e comparo tipos/posições entre execuções.”
+
+**Validação realizada:** typecheck, build e lint passaram usando npm-cli instalado, devido ao launcher npm quebrado do ambiente. Aviso preexistente de chunk > 500 kB permanece: principal 988,54 kB minificado. Verificações temporárias de código, sem arquivos de teste adicionados, passaram para repetição de tipos/posições com mesma seed, mudança com seed diferente, 200 spawns por execução em timestep fixo, raio/distância/ilha/bordas, rejeição de inimigo vivo, intervalo inicial, pesos 1/0 e 0/1, limite exato de 20 tentativas, pular e tentar no próximo intervalo, estado parado, snapshot dos pesos e reset do Game/IDs/PRNG. Também passou intervalo fracionário de 0,025 s com deltas de 0,01 s (40 oportunidades em 1 s). Não foram criados/executados E2E, nem realizado gameplay no navegador.
+
+## 5. Conceitos importantes para estudar
+
+- **Pseudoaleatoriedade e seed:** algoritmo determinístico que parece aleatório; seed define estado inicial. Repetir seed e chamadas repete valores.
+- **Escolha ponderada:** probabilidade é peso dividido pela soma; 60/40 equivale a 0,6/0,4, mas não exige quota exata por partida.
+- **Rejeição com limite:** sorteia candidatos e descarta inválidos até um máximo. Evita criação insegura e travamento quando a arena não tem espaço.
+
+- **Alcance de ataque:** distância lógica entre centros que decide aproximação versus disparo; não usa tamanho CSS ou bounds de Sprite.
+- **Proprietário/equipe:** `ownerId` identifica quem disparou; `isPlayerOwned` define quais entidades são alvos válidos. Projétil permanece independente depois de nascer.
+- **União discriminada e Pick:** `type` permite ao TypeScript garantir campo exclusivo do Shooter. `Pick` restringe a factory aos parâmetros de projétil que realmente usa.
+
+- **Vetor para o alvo e normalização:** alvo menos origem produz direção e distância; dividir pelo comprimento deixa só a direção, mantendo velocidade constante.
+- **atan2:** recupera ângulo respeitando os quadrantes; `atan2(dx, -dy)` adapta a função à frente para cima usada pelos navios.
+- **Ordem de colisão:** selecionar o primeiro collider e aplicar dano imediatamente impede atravessar ilha ou processar entidade que já morreu. Ordem é parte da regra, não apenas detalhe de código.
+
+- **Radianos e direção:** π radianos são 180°, e π/2 são 90°. Seno/cosseno convertem o ângulo em direção unitária; neste jogo frente é `(sin(r), -cos(r))` porque Y cresce para baixo.
+- **Vetores perpendiculares:** girar a direção em 90° produz o lado do navio. As três balas usam a mesma direção lateral e offsets diferentes ao longo da direção frontal.
+- **Cooldown na simulação:** tempo restante da arma diminui pelo delta, sem `setTimeout`. Só repetir quando chega a zero mantém uma taxa de disparo definida pelo tempo da simulação.
+- **Colisão por segmento:** verifica também o caminho entre duas posições, evitando perder um obstáculo atravessado durante um update. Projeta o centro do círculo nesse caminho e compara com a soma dos raios.
+
+- **Lifecycle do React e `useEffect`:** `useEffect` sincroniza um componente com sistemas externos, aqui a inicialização do Pixi. O cleanup libera o recurso na desmontagem.
+- **React Strict Mode:** em desenvolvimento, ajuda a revelar efeitos que não limpam recursos corretamente. O app é envolvido por `StrictMode`; por isso a criação do Pixi precisa tolerar setup/cleanup repetido.
+- **PixiJS `Application`:** gerencia renderer, stage e canvas. Usa coordenadas lógicas 960 × 600, ticker automático desligado e `render()` chamado pelo loop do jogo.
+- **`requestAnimationFrame`:** agenda callback antes do próximo repaint do navegador. É usado para agendar os frames do loop.
+- **Loop e delta time:** o loop separa chamadas de update e render. Delta é tempo decorrido; aqui cada update recebe 1/60 s fixo.
+- **Fixed timestep:** mantém o tamanho dos passos da simulação estável mesmo quando os frames de desenho variam. O movimento usa passos de 1/60 s.
+- **Simulação vs. renderização:** `MovementSystem` altera posição/rotação; `GameRenderer` transfere esses valores ao sprite. React não atualiza por frame.
+- **Interpolação:** usa estados anteriores e atuais para suavizar o desenho entre passos fixos. O loop calcula `alpha`, mas o jogo não guarda estados anteriores nem aplica o valor.
+- **Entidade:** registro simples com ID, posição, rotação e vida. A nave existe no mapa de `GameState`; wrappers sem uso foram removidos.
+- **Detecção de colisão:** navio e ilha usam círculos. Distância menor que a soma dos raios significa sobreposição; o sistema corrige a posição no estado lógico.
+- **Carregamento de assets:** `gameAssets.ts` centraliza os PNGs do navio, da ilha e da água. Carrega em paralelo, espera todas as operações terminarem e libera texturas bem-sucedidas caso alguma falhe. Texturas são reutilizadas pelos sprites e liberadas após os display objects.
+- **Coordenadas locais/mundiais:** tiles e colliders têm offsets relativos ao centro da ilha; somar a posição da ilha produz coordenadas da arena.
+- **TilingSprite:** repete uma textura de água sem criar um sprite por quadrado do fundo.
+- **Estado local vs. remoto:** navegação/loading são estado React; ranking/histórico são dados remotos em Query; coordenadas contínuas ficam no `GameState` da simulação.
+- **Cache TanStack Query:** resultados ficam associados a query keys; a mutation prevê invalidar ranking e histórico após sucesso.
+- **Axios:** cliente HTTP configurado com base `/api`, JSON e timeout; MSW intercepta chamadas no desenvolvimento.
+- **MSW:** mocka a fronteira de rede e permite que o código cliente use requisições reais do navegador sem servidor de API.
+- **Playwright E2E:** controla um browser real para verificar fluxos completos visíveis. Os testes atuais cobrem navegação, não regras do jogo.
+- **Idempotência:** não há mecanismo de idempotência implementado. Vale estudar quando envio/retry de partidas entrar no escopo, para evitar duplicar submissões.
+
+## 6. Perguntas que eu deveria conseguir responder
+
+- **Como reproduzir os spawns?** “Uso a mesma seed, configuração, estado inicial, deltas e inputs; comparo IDs, tipos e posições.”
+- **Quem cria os inimigos e quem controla a IA?** “SpawnSystem valida posições e chama factories; MovementSystem e CombatSystem controlam comportamento.”
+- **O que acontece sem espaço livre?** “Após o máximo de tentativas, pulo a criação e aguardo o próximo intervalo.”
+
+- **Por que o Shooter para e suas balas não perseguem?** “Distância define o alcance; a bala guarda direção fixa calculada no disparo.”
+- **Como cada Shooter dispara independentemente?** “O cooldown restante pertence ao registro de cada entidade e diminui pelo delta da simulação.”
+- **Como evita fogo amigo e usa cobertura?** “Filtro de equipe escolhe alvos válidos; o primeiro impacto com a ilha consome a bala antes de atingir alguém atrás.”
+
+- **Como funciona a perseguição?** “Normalizo jogador menos inimigo, multiplico por velocidade e delta e uso atan2 para orientar o sprite pelo estado.”
+- **Como evita atingir alvo atrás da ilha?** “Escolho a menor fração de entrada no segmento; ilha ganha empate.”
+- **Como evita dano repetido e por que sem pathfinding?** “Removo fontes consumidas e inimigos mortos imediatamente. Perseguição direta com bloqueio basta para o escopo atual.”
+
+- **Como calculo a trajetória e os lados?** “Frente é (sin(r), -cos(r)); esquerda/direita usam r menos/mais π/2. Os três tiros têm offsets diferentes e direção igual.”
+- **Por que projéteis ficam no GameState?** “Colisão e duração pertencem à simulação; Pixi apenas representa os dados.”
+- **Como funcionam cooldown e remoção?** “Subtraio delta do tempo restante e removo tiros expirados, fora da arena ou atingindo ilhas. Não dependo de timers ou frames de renderização.”
+
+- **Por que React não controla a posição do navio a cada frame?** “A posição fica no `GameState` mutável da simulação. React não precisa renderizar novamente a cada update.”
+- **Qual a diferença entre simulação e renderização?** “O sistema muda posição e rotação em passos fixos; o renderer transfere esses valores para o sprite Pixi.”
+- **Por que usar fixed timestep?** “Para que as regras avancem em passos previsíveis mesmo se a taxa de frames variar.”
+- **Como PixiJS entra no ciclo de vida do React?** “`GameCanvas` cria a Application e o jogo em `useEffect`; no cleanup para o loop, remove input, destrói renderer, textura e Application.”
+- **Como evitamos listeners ou loops duplicados?** “A tela instancia o jogo enquanto está montada; o loop impede duplicação e cancela RAF. `InputManager.detach` remove listeners e reseta as teclas.”
+- **Por que existe `GameConfig`?** “Agrupa valores tipados da partida. No start, o jogo copia a configuração, e as entidades/sistemas recebem valores explícitos.”
+- **Por que TanStack Query para ranking, mas não para o estado do jogo?** “Ranking é dado remoto assíncrono e cacheável; a simulação é local e atualizada continuamente.”
+- **O ranking atual vem de um servidor real?** “Não em desenvolvimento: MSW intercepta a chamada e responde com fixtures.”
+- **Quais assets são usados na partida?** “O navio oficial, o tile de água 73 e uma composição de costa, grama, planta e rocha listada no marco #3.”
+- **O que os testes automatizados garantem hoje?** “A abertura do menu e alguns caminhos de navegação. Não garantem que o jogo seja jogável.”
+
+## 7. Pontos que ainda não domino
+
+- **Spawn implementado pelo Codex em colaboração:** estudar LCG, Math.imul, conversão unsigned, distribuição ponderada e por que o consumo aleatório muda ao rejeitar uma posição. Revisar timer da simulação e reset por partida.
+
+- **Shooter implementado pelo Codex em colaboração:** revisar alcance, união discriminada, cooldown individual e ordem tiro/remoção/disparo. Saber distinguir mira atual de tiro guiado e explicar a limitação de sobreposição física.
+
+- **Chaser implementado pelo Codex em colaboração:** revisar perseguição normalizada, rotação, interseção segmento/círculo e a ordem tiro/contato. Saber demonstrar health via debugger sem confundir com o HUD placeholder.
+
+- **Armas implementadas pelo Codex neste marco colaborativo:** revisar as fórmulas de origem/direção e a colisão por segmento antes de explicar como se tivesse domínio delas. Explicar autoria com transparência.
+- **Radianos:** π representa 180°; π/2 representa 90°. Rotação Pixi e simulação usam radianos.
+- **Seno/cosseno e perpendiculares:** geram direção de comprimento 1; rotação zero é para cima neste projeto. Somar/subtrair π/2 produz direções laterais.
+- **Cooldown de simulação:** estudar segundos restantes, tolerância decimal e diferença entre segurar uma tecla e um evento único. O delta também controla duração e deslocamento.
+- **Colisão contínua do projétil:** estudar projeção no segmento e soma dos raios para entender como evita atravessar obstáculos entre updates.
+
+- **Fixed timestep e interpolação:** movimento já usa update fixo; renderer ainda não aplica alpha. Entender a implementação e o motivo de não haver interpolação nesta fatia.
+- **Lifecycle assíncrono e Strict Mode:** entender cancelamento durante decode do PNG e `Application.init`, além da ordem de destruir textura, renderer e app.
+- **Vetores e radianos:** estudar seno/cosseno, convenção do eixo Y da tela e rotação simultânea com avanço.
+- **Input:** entender snapshot lido pelo loop, `preventDefault`, reset em blur e detach ao sair da tela.
+- **Snapshot de configuração:** saber explicar a cópia de objetos aninhados e como opções futuras podem passar config a `GameCanvas`.
+- **Assets Pixi:** estudar textura compartilhada, `HTMLImageElement`, carregamento paralelo com falhas, TilingSprite, DPR versus CSS e integração futura de atlas.
+- **Colisão geométrica:** revisar distância quadrática, normal, recuperação do centro coincidente, subpassos e por que o collider não segue toda a arte.
+- **Renderização Pixi:** compreender stage, Graphics, Sprite, anchor central e chamada manual a `Application.render()`.
+- **Tamanho do bundle:** o build atual avisa que o principal chunk minificado supera 500 kB; entender divisão de código para tratar isso quando o escopo permitir.
+- **Envio de resultado:** hook de submissão está desconectado e fixture MSW não persiste. Definir fluxo de fim de partida e evitar duplicação em retries no momento de integrar.
+- **Acessibilidade e responsividade:** loading/erro têm roles e a área mantém proporção 8:5; ainda revisar foco e testar vários tamanhos de tela.
+- **Autoria do código atual:** não foi possível identificar se as partes preexistentes foram feitas manualmente, com Codex, Trae ou em colaboração. Registrar a origem corretamente quando houver informação, sem reescrever a história.

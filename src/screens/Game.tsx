@@ -1,6 +1,7 @@
-import { useState, type CSSProperties } from "react";
+import { useRef, useState, type CSSProperties } from "react";
 import { formatRemainingTime, type GameHudSnapshot } from "@/game/core/GameHudSnapshot";
-import { GameCanvas } from "@/components/GameCanvas";
+import { GameCanvas, type GameCanvasControls } from "@/components/GameCanvas";
+import { PauseDialog } from "@/components/PauseDialog";
 import { NavButton } from "@/components/NavButton";
 import type { GameResultPayload, ScreenName } from "@/app/navigationTypes";
 
@@ -28,7 +29,9 @@ const statsStyle: CSSProperties = {
 
 export function Game({ onNavigate }: GameProps) {
   const [hud, setHud] = useState<GameHudSnapshot | null>(null);
+  const gameControlsRef = useRef<GameCanvasControls>(null);
   const matchLabel = !hud ? "Loading" : hud.status === "running" ? "Playing"
+    : hud.status === "paused" ? "Paused"
     : hud.finishReason === "defeated" ? "Ship Destroyed" : "Time Expired";
   const handleQuit = () => {
     onNavigate("result", {
@@ -62,9 +65,13 @@ export function Game({ onNavigate }: GameProps) {
           </span>
           <span role="status">{matchLabel}</span>
         </div>
-        <NavButton onClick={handleQuit} variant="secondary">
-          Quit Match
-        </NavButton>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+          <button className="pause-action" disabled={hud?.status !== "running"}
+            onClick={() => gameControlsRef.current?.pause()}>Pause</button>
+          <NavButton onClick={handleQuit} variant="secondary">
+            Quit Match
+          </NavButton>
+        </div>
       </header>
 
       <main
@@ -76,11 +83,12 @@ export function Game({ onNavigate }: GameProps) {
           padding: 16,
         }}
       >
-        <GameCanvas onHudChange={setHud} />
+        <GameCanvas ref={gameControlsRef} onHudChange={setHud} />
       </main>
       <p style={{ padding: "8px 16px 16px", textAlign: "center", fontSize: 14 }}>
         W / ↑: Forward · A / ←: Left · D / →: Right · Space: Front shot · Q / E: Left / right broadside
       </p>
+      <PauseDialog paused={hud?.status === "paused"} onResume={() => gameControlsRef.current?.resume()} />
     </div>
   );
 }

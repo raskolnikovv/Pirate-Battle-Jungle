@@ -15,7 +15,7 @@ export interface GameState {
   elapsedSeconds: number;
   durationSeconds: number;
   remainingSeconds: number;
-  status: 'running' | 'finished';
+  status: 'running' | 'paused' | 'finished';
   finishReason: GameFinishReason | null;
 }
 

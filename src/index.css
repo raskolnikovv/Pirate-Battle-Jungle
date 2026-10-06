@@ -31,3 +31,44 @@ select {
 table {
   border-collapse: collapse;
 }
+
+.pause-dialog {
+  margin: auto;
+  width: min(420px, calc(100% - 32px));
+  max-height: calc(100svh - 32px);
+  overflow: auto;
+  padding: 28px;
+  border: 2px solid #b88a45;
+  border-radius: 12px;
+  background: #1e293b;
+  color: #f8fafc;
+  text-align: center;
+}
+
+.pause-dialog::backdrop {
+  background: rgb(2 6 23 / 75%);
+}
+
+.pause-dialog p {
+  margin: 16px 0 24px;
+  line-height: 1.5;
+}
+
+.pause-action {
+  padding: 12px 24px;
+  border-radius: 8px;
+  background: #fbbf24;
+  color: #172033;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.pause-action:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+}
+
+.pause-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

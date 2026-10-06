@@ -34,6 +34,10 @@ export class Game {
   private state: GameState | null = null;
   private spawnSystem: SpawnSystem | null = null;
   private lastHudSnapshot: GameHudSnapshot | null = null;
+  private readonly handleBlur = () => this.pause();
+  private readonly handleVisibilityChange = () => {
+    if (document.hidden) this.pause();
+  };
 
   constructor(
     private readonly renderer: GameRenderer,
@@ -53,7 +57,8 @@ export class Game {
   }
 
   start(config: GameConfig = DEFAULT_GAME_CONFIG): void {
-    if (this.loop.isRunning() && this.state?.status === 'running') return;
+    if (this.state?.status === 'paused'
+      || (this.loop.isRunning() && this.state?.status === 'running')) return;
     if (!Number.isFinite(config.sessionDuration)
       || config.sessionDuration < SESSION_DURATION_LIMITS.min
       || config.sessionDuration > SESSION_DURATION_LIMITS.max) {
@@ -68,6 +73,33 @@ export class Game {
     this.publishHud();
     this.input.attach();
     this.loop.start();
+    window.addEventListener('blur', this.handleBlur);
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
+    // Initialization may finish after the user has switched tabs/windows.
+    if (document.hidden || !document.hasFocus()) this.pause();
+  }
+
+  pause(): void {
+    if (this.state?.status !== 'running') return;
+    this.state.status = 'paused';
+    this.input.detach();
+    this.loop.stop();
+    this.render(0);
+    this.publishHud();
+  }
+
+  resume(): void {
+    if (this.state?.status !== 'paused' || document.hidden || !document.hasFocus()) return;
+    this.state.status = 'running';
+    this.input.attach();
+    // start resets lastTime and accumulator, discarding the paused interval.
+    this.loop.start();
+    this.publishHud();
+  }
+
+  private detachPauseListeners(): void {
+    window.removeEventListener('blur', this.handleBlur);
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
   }
 
   stop(): void {
@@ -77,6 +109,7 @@ export class Game {
   destroy(): void {
     this.stop();
     this.input.detach();
+    this.detachPauseListeners();
     this.state = null;
     this.spawnSystem = null;
     this.lastHudSnapshot = null;
@@ -180,6 +213,7 @@ export class Game {
     this.state.status = 'finished';
     this.state.finishReason = reason;
     this.input.detach();
+    this.detachPauseListeners();
   }
 
   private updateProjectiles(state: GameState, deltaSeconds: number, config: GameConfig): boolean {

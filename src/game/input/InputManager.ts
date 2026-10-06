@@ -16,11 +16,18 @@ const DEFAULT_SNAPSHOT: InputSnapshot = {
   fireRight: false,
 };
 
+const GAMEPLAY_KEYS = [' ', 'q', 'e', 'w', 'arrowup', 'a', 'arrowleft', 'd', 'arrowright'];
+
 export class InputManager {
   private readonly state: InputSnapshot = { ...DEFAULT_SNAPSHOT };
   private target: Window | null = null;
 
   private readonly boundKeyDown = (event: KeyboardEvent) => {
+    // Held keys from before/during pause must require a fresh press after resume.
+    if (event.repeat) {
+      if (GAMEPLAY_KEYS.includes(event.key.toLowerCase())) event.preventDefault();
+      return;
+    }
     this.applyKey(event, true);
   };
 

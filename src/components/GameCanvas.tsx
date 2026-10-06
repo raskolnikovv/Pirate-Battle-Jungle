@@ -1,5 +1,5 @@
 import { Application } from 'pixi.js';
-import { useEffect, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { DEFAULT_GAME_CONFIG, type GameConfig } from '@/config/gameConfig';
 import { destroyGameAssets, loadGameAssets, type GameAssets } from '@/game/assets/gameAssets';
 import { Game } from '@/game/core/Game';
@@ -13,10 +13,23 @@ interface GameCanvasProps {
 
 type CanvasStatus = 'loading' | 'ready' | 'error';
 
-export function GameCanvas({ config = DEFAULT_GAME_CONFIG, onHudChange }: GameCanvasProps) {
+export interface GameCanvasControls {
+  pause: () => void;
+  resume: () => void;
+}
+
+export const GameCanvas = forwardRef<GameCanvasControls, GameCanvasProps>(function GameCanvas(
+  { config = DEFAULT_GAME_CONFIG, onHudChange }, ref,
+) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<CanvasStatus>('loading');
   const hudCallbackRef = useRef(onHudChange);
+  const gameRef = useRef<Game | null>(null);
+
+  useImperativeHandle(ref, () => ({
+    pause: () => gameRef.current?.pause(),
+    resume: () => gameRef.current?.resume(),
+  }), []);
 
   useEffect(() => {
     hudCallbackRef.current = onHudChange;
@@ -33,6 +46,7 @@ export function GameCanvas({ config = DEFAULT_GAME_CONFIG, onHudChange }: GameCa
 
     const cleanup = () => {
       game?.destroy();
+      if (gameRef.current === game) gameRef.current = null;
       game = null;
 
       renderer?.destroy();
@@ -89,6 +103,7 @@ export function GameCanvas({ config = DEFAULT_GAME_CONFIG, onHudChange }: GameCa
         game = new Game(renderer, (snapshot) => {
           if (!cancelled) hudCallbackRef.current?.(snapshot);
         });
+        gameRef.current = game;
         game.start(config);
         setStatus('ready');
       } catch (error) {
@@ -153,4 +168,4 @@ export function GameCanvas({ config = DEFAULT_GAME_CONFIG, onHudChange }: GameCa
       )}
     </div>
   );
-}
+});

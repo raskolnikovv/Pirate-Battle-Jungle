@@ -10,17 +10,17 @@ A arquitetura planejada separa a interface e navegação React da simulação e 
 
 Já existem telas de menu, opções, jogo, resultado, ranking e histórico; navegação local entre elas; endpoints e respostas simuladas para ranking, histórico e envio de partida; e um teste E2E básico. `GameCanvas` inicializa e destrói uma aplicação PixiJS, e `GameLoop` tem uma estrutura de timestep fixo.
 
-A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← e D/→. Space dispara pela proa; Q/E lançam três balas paralelas. Chaser e Shooter surgem periodicamente com seed e posições validadas. A partida usa countdown da simulação, padrão 120 s; ao expirar, congela o gameplay e mantém a arena visível. Pontuação autoritativa soma 1 por inimigo eliminado por projétil do jogador; autodestruição não pontua. HP zero encerra por defeated e congela o gameplay. HUD React mostra pontos, HP, tempo MM:SS e status reais por snapshots; Pixi mostra barras oficiais acima de todos os navios. Transição automática para resultado, pausa, sons e integração de gameplay com API continuam pendentes.
+A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← e D/→. Space dispara pela proa; Q/E lançam três balas paralelas. Chaser e Shooter surgem periodicamente com seed e posições validadas. A partida usa countdown da simulação, padrão 120 s; ao expirar, congela o gameplay e mantém a arena visível. Pontuação autoritativa soma 1 por inimigo eliminado por projétil do jogador; autodestruição não pontua. HP zero encerra por defeated e congela o gameplay. HUD React mostra pontos, HP, tempo MM:SS e status reais por snapshots; Pixi mostra barras oficiais acima de todos os navios. Pausa manual e automática por blur/aba oculta congela a simulação e exige Resume explícito. Transição automática para resultado, sons e integração de gameplay com API continuam pendentes.
 
 ## 2. Como a arquitetura funciona
 
 - **React:** monta o aplicativo e apresenta telas, navegação e controles de interface. Em `App`, a tela atual é escolhida por estado local. React guarda loading e um snapshot de apresentação do HUD, sem receber coordenadas contínuas ou mapas da partida.
 - **PixiJS:** `GameCanvas` inicializa uma `Application` com coordenadas lógicas 960 × 600 e resolução do dispositivo; o canvas é escalado via CSS mantendo proporção. O ticker automático do Pixi fica desligado para usar o loop do jogo.
-- **Game:** valida duração 60–180 s, copia config e cria estado/SpawnSystem novos. Atualiza countdown e coordena sistemas somente com status running; ao terminar, remove input e mantém renderização do estado congelado.
+- **Game:** valida duração 60–180 s, copia config e cria estado/SpawnSystem novos. Atualiza countdown e coordena sistemas somente com status running; paused para loop/input e resume reinicia o relógio. Ao terminar, remove input e mantém renderização do estado congelado.
 - **GameLoop:** usa `requestAnimationFrame`, acumula tempo e chama `update` em passos fixos de 1/60 s; limita delta longo a 250 ms. Chama render em cada frame e calcula `alpha`, ainda não usado para interpolação.
-- **GameState:** guarda entidades, score, cooldowns, IDs, duração, remainingSeconds, elapsedSeconds, status running/finished e finishReason. Esses dados são autoritativos; nenhum objeto Pixi fica no estado. O antigo boolean isRunning foi substituído pelo status.
+- **GameState:** guarda entidades, score, cooldowns, IDs, duração, remainingSeconds, elapsedSeconds, status running/paused/finished e finishReason. Esses dados são autoritativos; nenhum objeto Pixi fica no estado. O antigo boolean isRunning foi substituído pelo status.
 - **GameRenderer:** repete água, compõe ilhas e desenha jogador, Chaser, Shooter e balas de ambas as equipes. Mapas por ID reutilizam sprites e destroem os removidos. Desenha barras de vida oficiais acima dos navios, sem girá-las. Não calcula IA, colisão nem dano. Debug opcional desenha os colliders amarelos dos inimigos.
-- **InputManager:** captura W/↑, A/←, D/→, Space, Q e E enquanto a partida está montada; devolve um snapshot para a simulação. Previne o comportamento padrão dessas teclas e remove listeners/reseta o input ao destruir.
+- **InputManager:** captura W/↑, A/←, D/→, Space, Q e E enquanto a partida está montada; devolve um snapshot para a simulação. Previne o comportamento padrão dessas teclas e remove listeners/reseta o input ao pausar ou destruir. Repetições de keydown não reativam teclas antigas após Resume.
 - **Sistemas de gameplay:** `MovementSystem` move navios/balas; `CollisionSystem` detecta impactos; `CombatSystem` aplica dano/armas e pontua somente golpes fatais de projéteis do jogador. `SpawnSystem` controla countdown, PRNG e IDs, valida posições e chama factories. Não contém IA.
 - **GameConfig:** inclui dimensões lógicas da arena e limite da nave. `Game.start(config)` copia os valores ao iniciar. Factories recebem valores explicitamente; nenhuma entidade busca secretamente `DEFAULT_GAME_CONFIG`.
 - **Axios:** cliente HTTP configurado com base `/api` e timeout de 10 segundos. As funções de endpoints usam esse cliente para ranking, histórico e submissão.
@@ -195,6 +195,16 @@ Registro da decisão do marco #4. No marco #5, o teste foi ampliado para retorna
 **Alternativas possíveis:** polling exigiria timer e cleanup extras; compartilhar GameState permitiria mutações e acoplamento. Store externa não é necessária.
 
 **Como eu explicaria isso em uma entrevista:** “O jogo calcula as regras. React recebe uma cópia dos valores que mostra, apenas quando mudam.”
+
+### Pausa pertence ao lifecycle da simulação
+
+**O que foi decidido:** GameState usa running/paused/finished; Game.pause interrompe loop e input. Game.resume reinicia o loop sem recriar a partida.
+
+**Por que fizemos assim:** todos os timers usam deltas da simulação; impedir updates congela cronômetro, cooldowns e spawn juntos. start do loop já limpa acumulador e redefine lastTime, descartando tempo pausado.
+
+**Alternativas possíveis:** só desabilitar input deixaria inimigos e tempo avançarem. Um boolean React separado criaria duas fontes de lifecycle; manter RAF ativo durante pausa seria possível, mas desnecessário para cena estática.
+
+**Como eu explicaria isso em uma entrevista:** “Pausar para o relógio da simulação, não apenas o teclado. Resume reinicia o relógio sem recuperar o período parado.”
 
 ## 4. Diário de implementação
 
@@ -779,7 +789,63 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 
 **Limitações:** não executei teste manual no navegador ou E2E. Sem pausa, Result real, API, toque, efeitos ou sons. Barras usam escala fixa em coordenadas lógicas; em telas muito pequenas podem ficar pequenas. Layout segue o cabeçalho existente, sem reproduzir toda a composição da referência. Contrato futuro de Result ainda usa player_defeated, enquanto simulação usa defeated.
 
+### Etapa 14 — Pausa completa
+
+**Status:** Concluído
+
+**Responsável pela implementação:** Colaborativo. Requisitos e arquitetura acordados com o usuário; implementação de código realizada pelo Codex.
+
+**O que foi implementado:** Pause manual no cabeçalho, pausa automática por perda de foco e aba oculta, modal React com Resume explícito, descarte de input e retomada sem recuperar tempo pausado.
+
+**Conformidade original:** INSTRUCOES.md foi lido antes de alterar código. Exige pausa manual/automática, suspensão de cronômetro/cooldowns/simulação e retomada por ação do jogador sem input acumulado. Nenhum conflito com este pedido; regras originais preservadas. Nenhum commit realizado.
+
+**Arquivos principais envolvidos:** src/game/core/Game.ts; src/game/core/GameState.ts; src/game/input/InputManager.ts; src/components/GameCanvas.tsx; src/components/PauseDialog.tsx (novo); src/screens/Game.tsx; src/index.css; este diário. GameLoop e GameHudSnapshot foram reutilizados sem mudanças; sistemas de movimento, combate e spawn não foram modificados.
+
+**Como funciona:**
+
+- GameState acrescenta paused. pause só aceita running; muda status, desanexa/reset input, para GameLoop, desenha uma última cena e publica snapshot. Chamadas repetidas são inofensivas.
+- Guard existente de Game.update só aceita running, portanto protege também contra avanço caso o método seja chamado com paused. Nenhum sistema ou countdown avança. GameLoop.stop cancela RAF; a cena já desenhada permanece no canvas sem exigir frames durante pausa.
+- resume só aceita paused com documento visível e janela focada. Reanexa input vazio e usa GameLoop.start existente: lastTime = performance.now e accumulator = 0. Não há catch-up, rajada de spawn ou cooldown consumido pelo relógio real.
+- Game registra window.blur e document.visibilitychange ao iniciar. Aba hidden pausa; eventos de focus/visible nunca retomam automaticamente. Se carregamento concluir em segundo plano, a partida inicia imediatamente pausada antes de simular. Listeners são removidos no término e destroy, usando referências estáveis.
+- InputManager.detach remove keydown/keyup/blur e limpa todas as flags. Durante pausa não captura gameplay. Após Resume, keydown com repeat é ignorado, mas teclas de gameplay repetidas ainda têm preventDefault para não rolar a página. É necessário soltar e pressionar novamente uma tecla antiga; movimento/tiros contínuos continuam funcionando após um pressionamento novo, pois a flag fica true até keyup.
+- GameCanvas expõe somente pause/resume via ref tipada e useImperativeHandle. A instância de Game permanece privada; React envia intenções e recebe confirmação no snapshot de status. gameRef é limpa no cleanup sem apagar outra instância iniciada depois. Callback HUD mantém guard cancelled; controles/estado da UI não reinicializam Pixi.
+- Tela mostra Paused pelo mesmo snapshot, sem estado React independente de pausa. Pause fica desabilitado durante loading/fim. Modal usa dialog.showModal: fundo inerte, foco em Resume e contenção nativa de foco. Cleanup fecha e restaura foco; Escape/backdrop não retomam nem fecham a pausa. Resume por clique/Enter/Space é a ação explícita.
+- Pausa não recria estado, entidades, seed, cooldowns ou pontos. start não reinicia uma partida pausada por acidente. Sair desmonta/destrói normalmente; iniciar outra partida usa reset existente. Partida finished não pode ser pausada ou retomada.
+
+**Por que foi feito dessa forma:** o mesmo relógio controla todas as regras. Pausar no coordenador evita alterações em vários sistemas e mantém React como apresentação. Parar RAF reduz trabalho durante uma cena estática. Dialog nativo resolve foco sem biblioteca extra.
+
+**O que eu preciso entender:** código implementado pelo Codex em colaboração. Estudar máquina de estados, tempo ativo vs relógio real, reset do acumulador, input sustentado vs key repeat, referências imperativas restritas, blur vs visibilitychange, cleanup assíncrono e dialog modal no Strict Mode.
+
+**Como testar manualmente:**
+
+1. Start Game, mover e disparar até haver inimigos/balas. Clicar Pause: modal Game Paused aparece com Resume focado; timer, HP, pontos e toda cena ficam parados. Esperar mais de um intervalo de spawn.
+2. Pressionar W/Space/Q/E durante pausa, soltar e clicar Resume: nenhum movimento/tiro antigo deve acontecer. Pressionar novamente: controles normais voltam.
+3. Manter W ou Space pressionado, mudar de janela e retornar sem soltar: modal permanece; após Resume, repetição antiga não reativa input. Soltar e pressionar novamente para jogar.
+4. Durante partida ativa, Alt+Tab para outra janela e voltar: continua pausada até Resume. Repetir mudando de aba, minimizando e alternando hidden/visible.
+5. Anotar timer/cooldown no debugger antes de pausar, esperar e retomar: somente tempo ativo posterior deve ser descontado. Projétil deve continuar da posição preservada; spawn deve respeitar restante do intervalo, sem rajada.
+6. No modal, Tab permanece dentro; Escape não fecha nem retoma. Resume por teclado deve funcionar e devolver foco ao jogo/interface.
+7. Repetir vários ciclos Pause/Resume e sair/reabrir partida: sem loops/listeners duplicados. Iniciar com carregamento de assets e imediatamente trocar aba: ao retornar deve exigir Resume.
+8. Terminar por tempo ou derrota: Pause desabilitado; alternar aba não muda motivo final nem reativa simulação. Reiniciar pela navegação existente restaura HUD/entidades como antes.
+
+**Possíveis perguntas de entrevista:**
+
+- O que pausa realmente? “Game para o loop; sem updates, tempo, cooldowns, projéteis, inimigos e spawn não avançam.”
+- Como evita recuperar tempo parado? “Ao retomar, start redefine lastTime e limpa acumulador, mantendo o estado da partida.”
+- Quem possui paused? “GameState. React recebe o status no snapshot e envia somente intenções.”
+- Por que voltar à aba não retoma? “Listeners apenas chamam pause; resume é chamado pelo botão explícito.”
+- Como evita tecla presa? “Detach limpa flags e remove listeners; após Resume ignoro repeat até um novo pressionamento.”
+- Como evita duplicação no Strict Mode? “Refs são privadas, listeners têm cleanup e inicialização cancelada não publica snapshots.”
+
+**Validação:** revisão de código confirmou guard central, stop/start do loop com reset existente, detach/reset do input, listeners simétricos e bridge de snapshot. Typecheck, lint e build passaram pelo npm-cli instalado. Launcher npm quebrado é condição preexistente; build mantém aviso de chunk > 500 kB (principal 995,23 kB minificado). Não foram adicionados ou executados testes E2E; teste manual será realizado pelo usuário.
+
+**Limitações:** pausa manual pelo botão, sem novo atalho. Modal simples acompanha o estilo existente; não reproduz integralmente a arte sample_pause. Browser deve suportar dialog.showModal (navegadores modernos). Nenhum teste manual de navegador executado nesta tarefa. Result/API continuam fora desta etapa; o fluxo Quit existente permanece.
+
 ## 5. Conceitos importantes para estudar
+
+- **Pausa do relógio:** parar updates mantém todos os valores temporais; reset de lastTime/acumulador descarta tempo de parede da pausa.
+- **blur e visibilitychange:** perder foco e ocultar documento são eventos diferentes; ambos pausam, nenhum retoma.
+- **Ref imperativa restrita:** permite enviar comandos a um recurso externo sem entregar sua instância ou tornar React dono do estado.
+- **Dialog modal nativo:** showModal torna fundo inerte e controla foco; cleanup deve fechar para tolerar remount.
 
 - **Snapshot de apresentação:** cópia pequena dos dados relevantes; readonly/freeze não transformam React na fonte de gameplay.
 - **Comparação antes de notificar:** publicar somente diferenças visíveis evita updates por movimento ou frações do timer.
@@ -832,6 +898,9 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 
 ## 6. Perguntas que eu deveria conseguir responder
 
+- **Pausa é só bloquear input?** “Não; paro o loop e bloqueio updates. Toda simulação e seus timers ficam congelados.”
+- **O que acontece ao voltar à aba?** “Continua paused até Resume; não simulo o tempo decorrido fora do jogo.”
+
 - **Como HUD recebe dados sem 60 Hz?** “Game compara HP/pontos/segundo/status e chama o callback só quando mudam; Canvas encaminha à tela.”
 - **Como evita UI calcular gameplay?** “React apenas formata snapshots imutáveis; regras permanecem no GameState.”
 
@@ -871,6 +940,8 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 - **O que os testes automatizados garantem hoje?** “A abertura do menu e alguns caminhos de navegação. Não garantem que o jogo seja jogável.”
 
 ## 7. Pontos que ainda não domino
+
+- **Pausa implementada pelo Codex em colaboração:** revisar transições running/paused/finished, retorno explícito, reset do relógio, repeat de teclado, controles por ref, foco do dialog e cleanup de listeners.
 
 - **HUD implementado pelo Codex em colaboração:** estudar bridge de callback, ref sem restart do efeito, snapshot congelado, publicação após retorno antecipado, timer inteiro de apresentação e máscara/barra com cleanup em Pixi.
 

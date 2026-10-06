@@ -1,6 +1,7 @@
 import { NavButton } from "@/components/NavButton";
 import { ScreenLayout } from "@/components/ScreenLayout";
 import type { ScreenName } from "@/app/navigationTypes";
+import { PendingSubmissions } from '@/components/PendingSubmissions';
 
 interface MainMenuProps {
   onNavigate: (screen: ScreenName) => void;
@@ -42,6 +43,7 @@ export function MainMenu({ onNavigate }: MainMenuProps) {
         <NavButton onClick={() => onNavigate("options")} variant="secondary">
           Options
         </NavButton>
+        <PendingSubmissions />
       </div>
     </ScreenLayout>
   );

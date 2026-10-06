@@ -1,4 +1,5 @@
 import type { MatchHistoryRecord } from '@/api/matchContracts';
+import { isSameMatch } from '@/api/matchContracts';
 import { HISTORY_FIXTURE, OTHER_PLAYER_MATCHES } from './fixtures';
 import { getGameConfigKey } from '@/config/gameConfigKey';
 import type { RankingEntry } from '@/api/rankingContracts';
@@ -18,14 +19,6 @@ type RegistrationResult =
   | { status: 'conflict' }
   | { status: 'storage_unavailable' };
 
-function sameMatch(a: MatchHistoryRecord, b: MatchHistoryRecord): boolean {
-  return a.matchId === b.matchId && a.playerId === b.playerId && a.playerName === b.playerName
-    && a.completedAt === b.completedAt && a.score === b.score
-    && a.enemiesDefeated === b.enemiesDefeated && a.durationSeconds === b.durationSeconds
-    && a.endReason === b.endReason && a.playerHealth === b.playerHealth
-    && getGameConfigKey(a.config) === getGameConfigKey(b.config);
-}
-
 function getAllMatches(): MatchHistoryRecord[] {
   const matches = new Map(fixtures
     .map((record) => [record.matchId, record]));
@@ -36,7 +29,7 @@ function getAllMatches(): MatchHistoryRecord[] {
 export function registerMockMatch(record: MatchHistoryRecord): RegistrationResult {
   const existing = confirmedMatches.get(record.matchId)
     ?? getAllMatches().find((fixture) => fixture.matchId === record.matchId);
-  if (existing) return sameMatch(existing, record)
+  if (existing) return isSameMatch(existing, record)
     ? { status: 'existing', record: existing } : { status: 'conflict' };
   // Persist acceptance before mutating memory or returning a successful POST.
   if (!saveConfirmedMatches([...confirmedMatches.values(), record])) return { status: 'storage_unavailable' };

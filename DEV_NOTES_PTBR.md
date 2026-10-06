@@ -4,6 +4,8 @@
 
 ## 1. Visão geral do projeto
 
+**Atualização da etapa 24:** conclusões agora entram em uma coleção local de pendências antes do POST. Falhas sobrevivem ao refresh e permitem retry explícito no Result/menu, com várias partidas independentes. Confirmação remove a pendência; reenvio recupera o mesmo registro pelo matchId. Cenários configuráveis completos e sincronização entre abas seguem futuros.
+
 **Estado atual após a etapa 23:** conclusões aceitas pelo MSW agora persistem após refresh em uma coleção versionada, compartilhada por ranking/histórico. Reenvios iguais recuperam o registro; IDs conflitantes recebem 409. Pendências e retries continuam futuros. As etapas anteriores preservam os limites que existiam quando foram implementadas.
 
 Pirate Battle é uma aplicação web que pretende ser um jogo 2D de combate naval visto de cima. A base usa React 19, TypeScript em modo estrito e PixiJS 8 para a parte gráfica. Vite serve e empacota a aplicação. TanStack Query, Axios e MSW formam a base da comunicação HTTP simulada; Playwright está configurado para testes E2E.
@@ -15,6 +17,8 @@ Já existem telas de menu, opções, jogo, resultado, ranking e histórico; nave
 A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← e D/→. Space dispara pela proa; Q/E lançam três balas paralelas. Chaser e Shooter surgem periodicamente com seed e posições validadas. A partida usa countdown da simulação, padrão 120 s; ao expirar, congela o gameplay e mantém a arena visível. Pontuação autoritativa soma 1 por inimigo eliminado por projétil do jogador; autodestruição não pontua. HP zero encerra por defeated e congela o gameplay. HUD React usa painéis/ícones oficiais e lista semântica para pontos, HP, tempo MM:SS e status reais por snapshots; comandos aparecem em legenda com teclas identificadas; Pixi mostra barras oficiais acima de todos os navios. Pausa manual e automática por blur/aba oculta congela a simulação e exige Resume explícito. Options salva duração 60–180 s e intervalo de spawn 1–15 s localmente; novas partidas usam valores salvos. Término normal navega para Result com dados reais e persiste a última conclusão; abandono retorna ao menu sem substituir resultado. Conclusões agora são enviadas por mutation/Axios ao MSW e aparecem no histórico confirmado da sessão. Sons, ranking completo e robustez/persistência da API continuam pendentes.
 
 ## 2. Como a arquitetura funciona
+
+**Pendências:** `pendingMatchesStorage` mantém os payloads locais aguardando confirmação; `useSyncExternalStore` publica somente alterações da coleção/erro de armazenamento para as telas. `useSubmitMatch` continua sendo o caminho único de mutation → Axios → MSW, tanto na conclusão quanto no retry. Registro confirmado permanece na coleção do servidor simulado; a lista local de pendências não alimenta ranking/histórico diretamente.
 
 **Persistência dos confirmados:** `confirmedMatchesStorage` lê/valida um único dataset; `matchHistoryState` hidrata seu Map quando o módulo é carregado. O POST salva antes de confirmar e as duas consultas derivam desse mesmo Map combinado com fixtures. React continua acessando apenas hooks/API; não lê essa coleção diretamente. Resultado local e Options continuam em chaves separadas, pois representam responsabilidades diferentes.
 
@@ -231,6 +235,16 @@ Registro da decisão do marco #4. No marco #5, o teste foi ampliado para retorna
 **Alternativas possíveis:** selecionar explicitamente campos relevantes ou usar hash versionado. O JSON canônico é inspecionável e evita colisões de hash, embora resulte em URL maior.
 
 **Como eu explicaria isso em uma entrevista:** “Ranking e histórico usam as mesmas partidas. Ordeno as chaves da configuração para comparar seus valores sem depender da ordem em que o objeto foi criado.”
+
+### Salvar antes de enviar e exigir confirmação do mesmo payload
+
+**O que foi decidido:** salvar o DTO completo antes de qualquer POST; manter pendência em falha/resultado incerto; exigir resposta válida e equivalente antes de removê-la. Retry é explícito e usa a mesma mutation, ID e snapshot originais.
+
+**Por que fizemos assim:** refresh não pode perder o resultado entre envio e resposta. Uma resposta perdida pode esconder uma aceitação real; idempotência permite recuperar essa confirmação sem duplicar. Não supomos sucesso pela existência de um resultado local.
+
+**Alternativas possíveis:** retry automático com backoff ou fila em IndexedDB. Nesta etapa, localStorage e botão explícito tornam o comportamento simples e previsível. Se storage negar escrita, mantemos o payload na sessão, avisamos e não começamos o POST.
+
+**Como eu explicaria isso em uma entrevista:** “Salvo o que preciso reenviar antes da chamada. Só tiro da fila quando a API devolve a mesma partida confirmada. Se a resposta se perder, reenviar o mesmo ID recupera o registro existente.”
 
 ## 4. Diário de implementação
 
@@ -1237,7 +1251,51 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 
 **Verificações da etapa 23:** 15 testes Playwright Chromium passaram: dez focados em persistência/idempotência/conflitos/reset/corrupção/acesso ou escrita de storage e cinco regressões de ranking/MSW. Typecheck, lint e build passaram pelo npm-cli da instalação Node. A primeira checagem estática encontrou uma união de status que não permitia estreitamento pelo TypeScript; separei os casos conflict/storage_unavailable e repeti typecheck/build com sucesso. Nenhum erro final; aviso de chunk maior que 500 kB permanece (principal 1.010,87 kB), além de NO_COLOR/FORCE_COLOR no runner. Artefatos de build/teste regenerados; sem commit.
 
+### Etapa 24 — Pendências persistentes e retry explícito
+
+**Status:** Concluído
+
+**Responsável pela implementação:** Colaborativo — código pelo Codex; requisitos e decisões com o usuário.
+
+**O que foi implementado:** conclusão → pendência salva → POST → confirmação validada → retirada da pendência. Falhas deixam o payload disponível para retry no Result ou Main Menu, inclusive após refresh e para partidas antigas. Play Again permanece disponível. Não há POST automático no startup ou remount.
+
+**Arquivos principais envolvidos:** `src/storage/pendingMatchesStorage.ts`, `src/hooks/usePendingMatches.ts`, `src/hooks/useApi.ts`, `src/components/PendingSubmissions.tsx`, `src/screens/Result.tsx`, `src/screens/MainMenu.tsx`, `src/api/endpoints.ts`, `src/api/matchContracts.ts`, `src/mocks/matchHistoryState.ts`, `tests/pendingMatches.spec.ts`, `DEV_NOTES_PTBR.md`.
+
+**Como funciona:** chave `pirate-battle:pending-matches:v1`, envelope `{ version: 1, records: SubmitMatchRequest[] }`, separado dos confirmados. Cada registro guarda o ID original, identidade do jogador, data, pontuação, eliminações, duração ativa, motivo, HP e GameConfig completo. Campos não são recalculados a partir de Options. Uma cópia independente do payload entra na coleção; IDs diferentes coexistem, reentrada do mesmo payload não duplica e dados diferentes com o mesmo ID não sobrescrevem o pendente original.
+
+**Criação/remoção:** mutationFn salva primeiro; se não consegue persistir, não envia, mantém cópia na sessão e mostra aviso para não fechar a página. Falha de POST ou confirmação incompatível mantém a pendência. Após resposta válida/equivalente, onSuccess remove e publica Submitted, invalidando todas as queries history/ranking. Se a gravação da remoção falhar, a confirmação continua real, mas a pendência permanece com aviso e pode ser reenviada para concluir a limpeza.
+
+**Retry e idempotência:** mesmo useSubmitMatch serve App e botões; uma Promise em andamento por matchId é compartilhada entre chamadas simultâneas. Botão fica desabilitado durante o envio; mesmo cliques síncronos repetidos produzem um único POST. API compara todos os campos do contrato pela função isSameMatch compartilhada com o mock, incluindo config canônico. O endpoint Axios valida a resposta desconhecida antes de tratá-la como confirmação. Reenvio após resposta perdida recupera o registro existente via 200; não gera UUID novo nem duplicate no ranking/histórico.
+
+**Conflito:** 409 mostra mensagem específica e preserva o payload para diagnóstico/recovery. Não descartamos nem sobrescrevemos o pendente ou o confirmado. A mensagem de falha é da sessão; após refresh, o payload continua pendente e um novo retry pode recuperar a razão novamente.
+
+**React:** componente pequeno lista contagem, score/data/ID, estado e Retry registration. Está no Result e menu para alcançar pendências antigas. useSyncExternalStore usa snapshot estável e unsubscribe para funcionar em Strict Mode. Eventos são apenas da coleção e da mutation, sem coordenadas/frame. Cache de status continua por matchId; quando o cache ainda não conhece a submissão, a presença de um payload salvo representa Pending registration, nunca Submitted presumido. Falha de storage e API são apresentadas por mensagens acessíveis; gameplay não aguarda retries.
+
+**Segurança de leitura:** JSON, versão, envelope, contrato completo e unicidade de IDs são validados. Coleção inválida é rejeitada inteira, sem completar campos ou enviar dados automaticamente. Erro de leitura vira aviso e não impede menu/jogo. Não apagamos/reescrevemos dados inválidos durante a leitura; uma pendência nova salva poderá substituí-los. Sem acesso ao storage não há garantia de sobrevivência ao refresh, e a interface informa isso.
+
+**Por que foi feito dessa forma:** INSTRUCOES.md exige manter conclusões incertas, permitir outra partida e registrar apenas uma vez. Mantivemos a stack, a persistência de confirmados, a recuperação MSW, filtros/ordenação/paginação e abandono. A comparação existente foi extraída para os contratos para reutilizar o mesmo critério no servidor e no receipt. Abandono não chama mutation e não cria pendência. Reset exclusivo dos confirmados permanece exclusivo; não apaga pendências silenciosamente. Sem commit.
+
+**O que eu preciso entender:** payload local não é confirmação remota; resposta HTTP 200 precisa representar a mesma partida; fila de várias conclusões é diferente de “último resultado”; estado da tentativa versus dados persistentes; Promise compartilhada e lifecycle de callbacks após sair da tela. Estudar o código escrito pelo Codex antes de explicar em entrevista.
+
+**Como testar manualmente:** concluir e esperar Submitted, conferindo records vazio na chave de pendências. Em falha, confirmar a presença do payload/Retry, atualizar e verificar Pending registration sem envio automático; Retry deve confirmar/remover. Fazer outra partida enquanto a primeira está pendente; ambas devem manter IDs/configs independentes. Reenviar uma partida já aceita não aumenta totais. Para falhas reproduzíveis, os testes injetam handlers somente na própria execução; ainda não há seletor de cenários para a UI.
+
+**Possíveis perguntas de entrevista:**
+
+- Por que persistir antes do POST? “Se atualizar a página durante a chamada, o payload ainda existe para reenviar.”
+- Por que pending e confirmed são separados? “O cliente sabe que tem algo a enviar; só a API pode aceitar.”
+- E se a resposta se perder depois de gravar no servidor? “O pending fica; o mesmo ID recupera o registro existente no retry.”
+- Como várias partidas coexistem? “Uma coleção por matchId guarda cada payload, sem substituir a partida anterior.”
+- Como evito duas chamadas por clique repetido? “Desabilito o botão e compartilho a tentativa em andamento pelo ID.”
+
+**Limitações intencionais:** sem seletor completo de cenários, backoff/auto retry, sincronização concorrente entre abas ou UI para editar/apagar payloads conflitantes. Payloads de etapas anteriores que já foram perdidos não são reconstruídos. Status remoto de submissões antigas confirmadas não é persistido como uma segunda coleção; o último Result sem pendência/cache ainda informa Not submitted in this session.
+
+**Verificações da etapa 24:** 28 testes Chromium passaram: 13 focados em pendências/retry e 15 regressões de confirmados/ranking/MSW. Cobrem persistência antes de POST, refresh sem envio automático, sucesso/limpeza, resposta perdida após aceitação, várias pendências, outra partida jogável, conflito, cliques repetidos, receipt incompatível, falha de gravação/limpeza de storage, abandono e corrupção. Conclusões são aceleradas só pela instrumentação; não representam teste completo de combate. Typecheck, lint e build passaram usando npm-cli da instalação Node. Corrigi a inferência de setQueryData usando updater para o novo status failed com message e repeti typecheck. Build mantém aviso de chunk acima de 500 kB (principal 1.014,74 kB); runner mantém aviso NO_COLOR/FORCE_COLOR. Artefatos de build/teste regenerados. Sem commit.
+
 ## 5. Conceitos importantes para estudar
+
+- **useSyncExternalStore:** conecta um pequeno estado local externo ao React por snapshot estável e assinatura com cleanup. Aqui observa conclusões pendentes, não gameplay contínuo.
+- **Resultado incerto:** timeout ou perda de resposta não prova que o servidor deixou de gravar. Persistir e reenviar pelo mesmo ID permite descobrir a confirmação.
+- **Compartilhar Promise por ID:** várias intenções iguais podem aguardar o mesmo trabalho em andamento, evitando POSTs simultâneos desnecessários.
 
 - **Idempotência por matchId:** um identificador estável permite reconhecer a mesma escrita após refresh; dados conflitantes precisam de tratamento explícito, não sobrescrita.
 - **Persistir antes de confirmar:** gravar com sucesso antes de atualizar memória/responder evita aceitar um registro que desapareceria após refresh por falha de armazenamento.
@@ -1384,6 +1442,8 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 - **O que os testes automatizados garantem hoje?** “A abertura do menu e alguns caminhos de navegação. Não garantem que o jogo seja jogável.”
 
 ## 7. Pontos que ainda não domino
+
+- **Pendências e retry implementados pelo Codex em colaboração:** revisar persist-before-POST, validação de receipt, limpeza que pode falhar, coleção múltipla, status por ID, Promise compartilhada e subscribe/unsubscribe. Saber explicar os limites de storage bloqueado e concorrência entre abas.
 
 - **Confirmados persistentes pelo Codex em colaboração:** revisar dataset versionado, rejeição integral de corrupção, hidratação do Map, conflito 409, falha de escrita 503, reset e limites de concorrência entre abas. Diferenciar essa etapa da futura recuperação de pendências.
 

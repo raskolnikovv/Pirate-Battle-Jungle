@@ -7,6 +7,7 @@ import type { MatchHistoryRecord, SubmitMatchRequest } from './matchContracts';
 import { LOCAL_PLAYER } from '@/config/localPlayer';
 import type { RankingEntry, RankingParams } from './rankingContracts';
 import { isHistoryRecord, isRankingEntry, readPaginatedResponse } from './responseValidation';
+import { isSameMatch } from './matchContracts';
 
 export type { SubmitMatchRequest } from './matchContracts';
 
@@ -33,6 +34,9 @@ export async function getHistory(
 export async function submitMatch(
   payload: SubmitMatchRequest,
 ): Promise<MatchHistoryRecord> {
-  const { data } = await httpClient.post<MatchHistoryRecord>('/matches', payload);
+  const { data } = await httpClient.post<unknown>('/matches', payload);
+  if (!isHistoryRecord(data) || !isSameMatch(payload, data)) {
+    throw new Error('The API did not confirm the submitted match data.');
+  }
   return data;
 }

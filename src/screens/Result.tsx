@@ -3,6 +3,7 @@ import { NavButton } from "@/components/NavButton";
 import { ScreenLayout } from "@/components/ScreenLayout";
 import type { GameResultPayload, ScreenName } from "@/app/navigationTypes";
 import { useMatchRegistration } from "@/hooks/useApi";
+import { PendingSubmissions } from '@/components/PendingSubmissions';
 
 interface ResultProps {
   onNavigate: (screen: ScreenName) => void;
@@ -36,12 +37,13 @@ const buttonRowStyle: CSSProperties = {
 export function Result({ onNavigate, result, storageError = false }: ResultProps) {
   const { data: registration } = useMatchRegistration(result?.matchId);
   const registrationLabels = {
-    not_submitted: 'Not submitted in this session', submitting: 'Submitting...',
+    not_submitted: 'Not submitted in this session', pending: 'Pending registration', submitting: 'Submitting...',
     submitted: 'Submitted', failed: 'Submission failed',
   };
   if (!result) {
     return <ScreenLayout title="Match Results">
       <p role="status">No completed match is available.</p>
+      <PendingSubmissions />
       <div style={buttonRowStyle}><NavButton onClick={() => onNavigate("main-menu")}>Main Menu</NavButton></div>
     </ScreenLayout>;
   }
@@ -104,11 +106,12 @@ export function Result({ onNavigate, result, storageError = false }: ResultProps
         <section aria-label="Match details" style={{ lineHeight: 1.8 }}>
           <p role="status" aria-atomic="true">Registration: <strong>{registrationLabels[registration?.status ?? 'not_submitted']}</strong></p>
           {registration?.status === 'submitted' && <p>The API confirmed this match in your history.</p>}
-          {registration?.status === 'failed' && <p>Registration failed. You can still play another match.</p>}
+          {registration?.status === 'failed' && <p role="alert">{registration.message} You can still play another match.</p>}
           <p>Session time: {result.config.sessionDuration}s · Enemy spawn time: {result.config.enemySpawnInterval}s</p>
           <p>Completed: <time dateTime={result.completedAt}>{new Date(result.completedAt).toLocaleString('en-US')}</time></p>
           {storageError && <p role="alert">Unable to save this result locally. It remains available until you reload.</p>}
         </section>
+        <PendingSubmissions />
         <div style={buttonRowStyle}>
           <NavButton onClick={() => onNavigate("game")}>Play Again</NavButton>
           <NavButton onClick={() => onNavigate("ranking")} variant="secondary">

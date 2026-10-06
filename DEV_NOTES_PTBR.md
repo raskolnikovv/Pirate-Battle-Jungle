@@ -10,16 +10,16 @@ A arquitetura planejada separa a interface e navegação React da simulação e 
 
 Já existem telas de menu, opções, jogo, resultado, ranking e histórico; navegação local entre elas; endpoints e respostas simuladas para ranking, histórico e envio de partida; e um teste E2E básico. `GameCanvas` inicializa e destrói uma aplicação PixiJS, e `GameLoop` tem uma estrutura de timestep fixo.
 
-A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← e D/→. Space dispara pela proa; Q/E lançam três balas paralelas. Chaser e Shooter surgem periodicamente com seed e posições validadas. A partida usa countdown da simulação, padrão 120 s; ao expirar, congela o gameplay e mantém a arena visível. Pontuação autoritativa soma 1 por inimigo eliminado por projétil do jogador; autodestruição não pontua. HP zero encerra por defeated e congela o gameplay. Barras de vida, HUD real, transição automática para resultado, pausa, sons e integração de gameplay com API continuam pendentes.
+A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← e D/→. Space dispara pela proa; Q/E lançam três balas paralelas. Chaser e Shooter surgem periodicamente com seed e posições validadas. A partida usa countdown da simulação, padrão 120 s; ao expirar, congela o gameplay e mantém a arena visível. Pontuação autoritativa soma 1 por inimigo eliminado por projétil do jogador; autodestruição não pontua. HP zero encerra por defeated e congela o gameplay. HUD React mostra pontos, HP, tempo MM:SS e status reais por snapshots; Pixi mostra barras oficiais acima de todos os navios. Transição automática para resultado, pausa, sons e integração de gameplay com API continuam pendentes.
 
 ## 2. Como a arquitetura funciona
 
-- **React:** monta o aplicativo e apresenta telas, navegação e controles de interface. Em `App`, a tela atual é escolhida por estado local. React guarda o status de loading do canvas, mas não recebe as coordenadas contínuas da partida.
+- **React:** monta o aplicativo e apresenta telas, navegação e controles de interface. Em `App`, a tela atual é escolhida por estado local. React guarda loading e um snapshot de apresentação do HUD, sem receber coordenadas contínuas ou mapas da partida.
 - **PixiJS:** `GameCanvas` inicializa uma `Application` com coordenadas lógicas 960 × 600 e resolução do dispositivo; o canvas é escalado via CSS mantendo proporção. O ticker automático do Pixi fica desligado para usar o loop do jogo.
 - **Game:** valida duração 60–180 s, copia config e cria estado/SpawnSystem novos. Atualiza countdown e coordena sistemas somente com status running; ao terminar, remove input e mantém renderização do estado congelado.
 - **GameLoop:** usa `requestAnimationFrame`, acumula tempo e chama `update` em passos fixos de 1/60 s; limita delta longo a 250 ms. Chama render em cada frame e calcula `alpha`, ainda não usado para interpolação.
 - **GameState:** guarda entidades, score, cooldowns, IDs, duração, remainingSeconds, elapsedSeconds, status running/finished e finishReason. Esses dados são autoritativos; nenhum objeto Pixi fica no estado. O antigo boolean isRunning foi substituído pelo status.
-- **GameRenderer:** repete água, compõe ilhas e desenha jogador, Chaser, Shooter e balas de ambas as equipes. Mapas por ID reutilizam sprites e destroem os removidos. Não calcula IA, colisão nem dano. Debug opcional desenha os colliders amarelos dos inimigos.
+- **GameRenderer:** repete água, compõe ilhas e desenha jogador, Chaser, Shooter e balas de ambas as equipes. Mapas por ID reutilizam sprites e destroem os removidos. Desenha barras de vida oficiais acima dos navios, sem girá-las. Não calcula IA, colisão nem dano. Debug opcional desenha os colliders amarelos dos inimigos.
 - **InputManager:** captura W/↑, A/←, D/→, Space, Q e E enquanto a partida está montada; devolve um snapshot para a simulação. Previne o comportamento padrão dessas teclas e remove listeners/reseta o input ao destruir.
 - **Sistemas de gameplay:** `MovementSystem` move navios/balas; `CollisionSystem` detecta impactos; `CombatSystem` aplica dano/armas e pontua somente golpes fatais de projéteis do jogador. `SpawnSystem` controla countdown, PRNG e IDs, valida posições e chama factories. Não contém IA.
 - **GameConfig:** inclui dimensões lógicas da arena e limite da nave. `Game.start(config)` copia os valores ao iniciar. Factories recebem valores explicitamente; nenhuma entidade busca secretamente `DEFAULT_GAME_CONFIG`.
@@ -30,7 +30,7 @@ A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← 
 
 **Fluxo existente da interface:** `main.tsx` inicia MSW em desenvolvimento e monta `App` dentro de `StrictMode` e `ReactQueryProvider`. `App` escolhe a tela. Ranking e histórico usam hooks TanStack Query → endpoints Axios → handlers MSW no ambiente de desenvolvimento.
 
-**Fluxo da partida:** `GameCanvas` carrega texturas e liga Pixi/renderer/jogo. Game verifica lifecycle e limita delta ao tempo disponível. Cada subpasso contabiliza seu tempo ativo e executa movimento/IA → ilha → armas → impactos → Shooter → contato → spawn, então detecta time-up. Dano letal durante impactos ou contato chama finishMatch imediatamente e interrompe as ações restantes. Depois de finished, update retorna antes dos sistemas e render continua. React não decrementa nem recebe o timer por frame.
+**Fluxo da partida:** `GameCanvas` carrega texturas e liga Pixi/renderer/jogo. Game verifica lifecycle e limita delta ao tempo disponível. Cada subpasso contabiliza seu tempo ativo e executa movimento/IA → ilha → armas → impactos → Shooter → contato → spawn, então detecta time-up. Dano letal durante impactos ou contato chama finishMatch imediatamente e interrompe as ações restantes. Depois de finished, update retorna antes dos sistemas e render continua. Game publica um snapshot inicial e, após updates, somente quando HP/pontos/segundo exibido/status/motivo mudam. GameCanvas encaminha à tela React; React não decrementa o timer nem recebe coordenadas.
 
 ## 3. Decisões técnicas
 
@@ -185,6 +185,16 @@ Registro da decisão do marco #4. No marco #5, o teste foi ampliado para retorna
 **Alternativas possíveis:** setInterval/Date.now ou timer React. Exigiriam sincronizar o relógio com a simulação, pausa e lifecycle; não foram usados.
 
 **Como eu explicaria isso em uma entrevista:** “O timer avança junto do jogo pelo delta. Ao chegar a zero, o Game marca finished e deixa de chamar os sistemas, mantendo o renderer desenhando a última cena.”
+
+### Publicar snapshots de apresentação por mudança
+
+**O que foi decidido:** Game envia um objeto pequeno, readonly e congelado, com HP máximo/atual, pontos, segundo restante e status/motivo. Canvas encaminha ao estado React da tela.
+
+**Por que fizemos assim:** evita compartilhar Maps mutáveis e mantém regras em GameState. Comparar campos apresentados evita callback e setState em todos os ticks.
+
+**Alternativas possíveis:** polling exigiria timer e cleanup extras; compartilhar GameState permitiria mutações e acoplamento. Store externa não é necessária.
+
+**Como eu explicaria isso em uma entrevista:** “O jogo calcula as regras. React recebe uma cópia dos valores que mostra, apenas quando mudam.”
 
 ## 4. Diário de implementação
 
@@ -715,7 +725,65 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 
 **Limitações:** HUD e Result continuam desconectados; nenhum E2E, pausa, API, barras, efeitos ou som adicionado. Não houve validação manual no navegador. Há diferença de nomenclatura entre motivo da simulação e contrato antigo da UI/API. Renderização permanece ativa após fim.
 
+### Etapa 13 — HUD e integração React
+
+**Status:** Concluído
+
+**Responsável pela implementação:** Colaborativo. Separação simulação/UI e estratégia de integração decididas em colaboração; código implementado pelo Codex.
+
+**O que foi implementado:** HUD real de pontos, tempo MM:SS, HP atual/máximo e estado; barras oficiais sobre jogador e inimigos em Pixi; comandos de teclado visíveis; layout flexível do cabeçalho. Pontuação continua +1 por eliminação válida e +0 por contato.
+
+**Requisitos originais e conflito:** INSTRUCOES.md exige vida acima do jogador e de cada inimigo, HUD com pontos/tempo e informação semântica de pontos/tempo/estado, sem anúncios por frame. O anexo exclui barras inimigas por padrão, mas manda priorizar o original em conflitos. Portanto foram implementadas barras sobre ambos, sem mudar gameplay. Original consultado antes da implementação; não foi necessário pedir confirmação novamente porque o usuário já autorizou seguir suas regras. Não significa implementar pausa, Result ou todos os requisitos restantes agora.
+
+**Arquivos principais envolvidos:** GameHudSnapshot.ts (novo); Game.ts; GameCanvas.tsx; screens/Game.tsx; GameRenderer.ts; gameAssets.ts; este diário. App, GameLoop, GameState, configurações e regras de combate não foram alterados nesta etapa.
+
+**Como funciona:**
+
+- GameHudSnapshot contém somente health, maxHealth, score, remainingSeconds inteiro apresentado, status e finishReason. Sem Maps, posições, Game global ou referência mutável ao estado original. Object.freeze e readonly protegem a cópia de valores primitivos.
+- Start publica imediatamente o snapshot real da configuração. Enquanto assets carregam, tela mostra placeholders e Loading, sem inventar HP ou duração. GameCanvas limpa a apresentação para null ao iniciar nova inicialização.
+- Callback de update do GameLoop executa a simulação e depois publishHud, inclusive quando o update terminou cedo por derrota/time-up. publishHud compara todos os campos apresentados com o snapshot anterior. Mudança de posição ou fração de segundo não dispara callback. HP/pontos/status mudados são publicados no mesmo update.
+- Timer usa ceil com tolerância de 1e-9 para resíduo numérico: 120 → 02:00, 65 → 01:05, 9 → 00:09, 0 → 00:00. Não altera remainingSeconds fracionário do GameState. Formatador somente apresenta o inteiro.
+- GameCanvas encaminha via callback guardado em ref; efeito atualiza a ref sem reinicializar Pixi quando identidade do callback muda. Guard cancelled impede publicação por instância desmontada. setHud da tela é estável. Efeito de inicialização segue dependente da config, não do HUD.
+- Status textual usa role=status; timer/HP/pontos permanecem texto sem região live, evitando anúncios a cada segundo. Cabeçalho quebra linhas e controles são texto em inglês.
+- Pixi cria barra por ID numa camada acima do mundo. Frame e preenchimento oficiais usam máscara horizontal: HP reduz largura visível, sem comprimir arte. Geometria da máscara muda apenas se proporção mudar; posição acompanha cada frame. Barra não é filha do sprite girado; posição considera extensão máxima do navio e limita borda superior/laterais. Morte remove a barra junto com ID ausente; cleanup destrói containers, máscaras e sprites antes de texturas.
+- Canvas mantém coordenadas lógicas da config, proporção e DPR; CSS reserva espaço para HUD/comandos. Nenhuma dimensão do HUD participa da simulação.
+- Finished publica valores finais e preserva cena congelada. Novo start limpa comparação e publica valores iniciais; remount da tela começa com null. Nenhuma navegação Result foi ligada.
+
+**Por que foi feito dessa forma:** GameState é a fonte verdadeira. HUD é apresentação de uma cópia; Pixi acompanha coordenadas contínuas e indicadores no mundo. Snapshot não inclui duração/elapsed por ainda não serem usados pelo HUD; permanecem no estado para futuro resultado.
+
+**O que eu preciso entender:** código escrito pelo Codex nesta colaboração. Revisar estado autoritativo vs cópia, igualdade de campos, arredondamento visual, callbacks/ref e dependências do useEffect, cancelamento assíncrono em Strict Mode, máscara Pixi e cleanup de recursos.
+
+**Como testar manualmente:**
+
+1. Start Game: após carregar, HP 100 / 100, Score 0, Time 02:00 e Playing; barra verde sobre jogador. Durante loading não há valores antigos.
+2. Esperar: Time reduz para 01:59 sem travar movimento. Redimensionar janela: cabeçalho quebra linhas e arena mantém proporção. Comando W/↑, A/←, D/→, Space, Q/E aparece abaixo.
+3. Atirar num Chaser ou Shooter: primeiro dano reduz barra vermelha sem pontos; morte soma 1 e remove navio/barra.
+4. Deixar Chaser encostar: HP reduz 20 e barra verde diminui; Score não aumenta. Bala de Shooter reduz HP 10.
+5. Para acelerar derrota, breakpoint em Game.update e ajustar this.state.players.get('player').health = 1. Continuar até impacto: HP 0 / 100, Ship Destroyed e cena congelada; HUD preserva pontuação/tempo finais.
+6. Para time-up rápido, breakpoint em Game.update, ajustar this.state.remainingSeconds = 0.005 e this.state.elapsedSeconds = this.state.durationSeconds - 0.005. Sem dano letal, continuar: Time 00:00, Time Expired e cena congelada.
+7. Quit Match e Play Again: HUD volta a HP 100 / 100, Score 0, Time 02:00 e Playing, sem entidades anteriores. Quit ainda usa fluxo antigo de resultado placeholder; resultado real não faz parte desta etapa.
+8. Em React DevTools Profiler, mover/rotacionar sem dano ou kills: posição não provoca renderizações contínuas da tela. Mudanças reais de HP/pontos podem naturalmente produzir updates próximos; não há limite artificial que esconderia dano.
+
+**Possíveis perguntas de entrevista:**
+
+- Onde fica o estado verdadeiro? “GameState guarda HP, score e timer; React guarda somente a cópia apresentada.”
+- Como HUD recebe dados? “Game compara o snapshot após update e publica mudanças por callback; Canvas encaminha à tela.”
+- Por que não 60 renders por segundo? “Coordenadas não vão ao React e frações do timer não mudam o segundo exibido.”
+- Por que não compartilhar Maps? “São mutáveis e contêm dados que HUD não usa; compartilhar aumentaria acoplamento.”
+- Como evita divergência? “React não soma pontos nem desconta tempo; apresenta valores enviados pelo jogo.”
+- React e Pixi fazem o quê? “React apresenta HUD/telas; Pixi desenha mundo e barras sobre entidades.”
+
+**Validação de código:** verificações temporárias passaram para snapshot inicial imutável, HP máximo/atual, score zero, duração configurada 65 s, 60 updates com apenas uma mudança de segundo, formatação 02:00/01:05/00:09/00:00, kill +1, dano não fatal sem pontos, contato sem pontos, HP por tiro/contato, derrota final HP zero, freeze sem callbacks extras, restart, time-up 00:00 e ausência de callback após destroy. Renderer/RAF substituídos; checks não garantem visual Pixi ou renders React no browser.
+
+**Verificações adicionais:** renderer com objetos Pixi substituídos confirmou reutilização das barras, recorte proporcional para jogador/inimigo, posição sem rotação, preenchimento invisível em HP zero, remoção por ID e cleanup. Typecheck, build e lint passaram via npm-cli instalado; launcher npm quebrado é condição preexistente. Aviso preexistente de chunk > 500 kB permanece (principal 993,15 kB minificado).
+
+**Limitações:** não executei teste manual no navegador ou E2E. Sem pausa, Result real, API, toque, efeitos ou sons. Barras usam escala fixa em coordenadas lógicas; em telas muito pequenas podem ficar pequenas. Layout segue o cabeçalho existente, sem reproduzir toda a composição da referência. Contrato futuro de Result ainda usa player_defeated, enquanto simulação usa defeated.
+
 ## 5. Conceitos importantes para estudar
+
+- **Snapshot de apresentação:** cópia pequena dos dados relevantes; readonly/freeze não transformam React na fonte de gameplay.
+- **Comparação antes de notificar:** publicar somente diferenças visíveis evita updates por movimento ou frações do timer.
+- **Máscara Pixi:** recorta preenchimento de uma textura mantendo sua forma; barra em camada separada não gira com o navio.
 
 - **Atribuição de morte:** pontuação depende de quem causou o golpe fatal, e não apenas da ausência de um inimigo.
 - **Transição idempotente:** finishMatch só muda running uma vez; chamadas posteriores preservam motivo e resultado.
@@ -764,6 +832,9 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 
 ## 6. Perguntas que eu deveria conseguir responder
 
+- **Como HUD recebe dados sem 60 Hz?** “Game compara HP/pontos/segundo/status e chama o callback só quando mudam; Canvas encaminha à tela.”
+- **Como evita UI calcular gameplay?** “React apenas formata snapshots imutáveis; regras permanecem no GameState.”
+
 - **Como evita pontos duplicados?** “O golpe fatal remove o inimigo; outro evento não encontra um alvo vivo.”
 - **Quem decide derrota e empate com timer?** “Game centraliza o término: dano no último passo ativo vem antes do time-up; tempo já zero impede gameplay.”
 - **Por que contato não pontua?** “Não foi um golpe fatal de projétil do jogador.”
@@ -801,9 +872,11 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 
 ## 7. Pontos que ainda não domino
 
+- **HUD implementado pelo Codex em colaboração:** estudar bridge de callback, ref sem restart do efeito, snapshot congelado, publicação após retorno antecipado, timer inteiro de apresentação e máscara/barra com cleanup em Pixi.
+
 - **Pontuação/derrota implementadas pelo Codex em colaboração:** revisar causa da morte, snapshot das recompensas, interrupção imediata, contabilização do último subpasso e diferença defeated/player_defeated antes de conectar Result. Entender que histórico anterior registra o comportamento de cada etapa, não o comportamento atual.
 
-- **Timer implementado pelo Codex em colaboração:** revisar delta parcial final, precisão de ponto flutuante, guard central e reset do loop após finished. Saber explicar por que o HUD ainda não mostra o timer e qual seria a sincronização futura.
+- **Timer implementado pelo Codex em colaboração:** revisar delta parcial final, precisão de ponto flutuante, guard central e reset do loop após finished. Saber explicar a sincronização do timer com o HUD introduzida na etapa 13.
 
 - **Spawn implementado pelo Codex em colaboração:** estudar LCG, Math.imul, conversão unsigned, distribuição ponderada e por que o consumo aleatório muda ao rejeitar uma posição. Revisar timer da simulação e reset por partida.
 

@@ -9,6 +9,7 @@ import { CombatSystem } from '../systems/CombatSystem';
 import { SpawnSystem } from '../systems/SpawnSystem';
 import { GameLoop } from './GameLoop';
 import type { GameFinishReason, GameState } from './GameState';
+import { createHudSnapshot, type GameHudSnapshot } from './GameHudSnapshot';
 
 const PLAYER_ID = 'player';
 
@@ -32,10 +33,17 @@ export class Game {
   private configSnapshot: GameConfig | null = null;
   private state: GameState | null = null;
   private spawnSystem: SpawnSystem | null = null;
+  private lastHudSnapshot: GameHudSnapshot | null = null;
 
-  constructor(private readonly renderer: GameRenderer) {
+  constructor(
+    private readonly renderer: GameRenderer,
+    private readonly onHudChange?: (snapshot: GameHudSnapshot) => void,
+  ) {
     this.loop = new GameLoop({
-      update: (deltaSeconds) => this.update(deltaSeconds),
+      update: (deltaSeconds) => {
+        this.update(deltaSeconds);
+        this.publishHud();
+      },
       render: (alpha) => this.render(alpha),
     });
   }
@@ -56,6 +64,8 @@ export class Game {
     this.configSnapshot = copyConfig(config);
     this.spawnSystem = new SpawnSystem(this.configSnapshot);
     this.state = this.createInitialState(this.configSnapshot);
+    this.lastHudSnapshot = null;
+    this.publishHud();
     this.input.attach();
     this.loop.start();
   }
@@ -69,6 +79,18 @@ export class Game {
     this.input.detach();
     this.state = null;
     this.spawnSystem = null;
+    this.lastHudSnapshot = null;
+  }
+
+  private publishHud(): void {
+    if (!this.state || !this.onHudChange) return;
+    const next = createHudSnapshot(this.state);
+    const previous = this.lastHudSnapshot;
+    if (previous && next.health === previous.health && next.maxHealth === previous.maxHealth
+      && next.score === previous.score && next.remainingSeconds === previous.remainingSeconds
+      && next.status === previous.status && next.finishReason === previous.finishReason) return;
+    this.lastHudSnapshot = next;
+    this.onHudChange(next);
   }
 
   private createInitialState(config: GameConfig): GameState {

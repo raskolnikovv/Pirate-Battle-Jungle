@@ -4,6 +4,13 @@ import type { GameState } from '../core/GameState';
 
 export const SHOW_COLLISION_DEBUG = false;
 
+interface HealthView {
+  container: Container;
+  fill: Sprite;
+  clip: Graphics;
+  ratio: number;
+}
+
 export class GameRenderer {
   private app: Application | null = null;
   private stage: Container | null = null;
@@ -16,6 +23,8 @@ export class GameRenderer {
   private enemyLayer: Container | null = null;
   private readonly enemyViews = new Map<string, Sprite>();
   private collisionDebug: Graphics | null = null;
+  private healthLayer: Container | null = null;
+  private readonly healthViews = new Map<string, HealthView>();
 
   constructor(
     private readonly arenaWidth: number,
@@ -37,6 +46,8 @@ export class GameRenderer {
     this.projectileLayer = new Container();
     this.enemyLayer = new Container();
     this.stage.addChild(water, this.islandLayer, this.enemyLayer, this.projectileLayer, this.playerSprite);
+    this.healthLayer = new Container();
+    this.stage.addChild(this.healthLayer);
     if (import.meta.env.DEV && SHOW_COLLISION_DEBUG) {
       this.collisionDebug = new Graphics();
       this.stage.addChild(this.collisionDebug);
@@ -58,8 +69,54 @@ export class GameRenderer {
       }
     }
 
+    this.renderHealth(state);
     this.renderCollisionDebug(state);
     this.app?.render();
+  }
+
+  private renderHealth(state: GameState | null): void {
+    if (!this.healthLayer || !this.assets) return;
+    const ships = [...state?.players.values() ?? [], ...state?.enemies.values() ?? []];
+    const activeIds = new Set(ships.map((ship) => ship.id));
+    for (const [id, view] of this.healthViews) {
+      if (!activeIds.has(id)) {
+        view.container.destroy({ children: true });
+        this.healthViews.delete(id);
+      }
+    }
+    for (const ship of ships) {
+      const isPlayer = state?.players.has(ship.id);
+      let view = this.healthViews.get(ship.id);
+      if (!view) {
+        const container = new Container();
+        const frame = new Sprite(isPlayer ? this.assets.playerHealthFrame : this.assets.enemyHealthFrame);
+        const fill = new Sprite(isPlayer ? this.assets.playerHealthFill : this.assets.enemyHealthFill);
+        const clip = new Graphics();
+        container.addChild(frame, fill, clip);
+        fill.mask = clip;
+        container.scale.set(0.5);
+        this.healthLayer.addChild(container);
+        view = { container, fill, clip, ratio: -1 };
+        this.healthViews.set(ship.id, view);
+      }
+      const ratio = ship.maxHealth > 0 ? Math.max(0, Math.min(1, ship.health / ship.maxHealth)) : 0;
+      if (ratio !== view.ratio) {
+        // Alpha bounds from the supplied UI atlas; clip rather than squash the artwork.
+        const bounds = isPlayer ? { x: 27, y: 12, width: 202, height: 26 }
+          : { x: 21, y: 9, width: 118, height: 21 };
+        view.clip.clear().rect(bounds.x, bounds.y, bounds.width * ratio, bounds.height).fill(0xffffff);
+        view.fill.visible = ratio > 0;
+        view.ratio = ratio;
+      }
+      const sprite = isPlayer ? this.playerSprite : this.enemyViews.get(ship.id);
+      const halfExtent = sprite ? Math.hypot(sprite.width, sprite.height) / 2 : ship.collisionRadius;
+      const width = (isPlayer ? 256 : 160) * 0.5;
+      const height = (isPlayer ? 48 : 40) * 0.5;
+      view.container.position.set(
+        Math.max(0, Math.min(this.arenaWidth - width, ship.x - width / 2)),
+        Math.max(0, ship.y - halfExtent - height - 6),
+      );
+    }
   }
 
   private renderIslands(state: GameState | null): void {
@@ -152,6 +209,8 @@ export class GameRenderer {
     this.islandViews.clear();
     this.projectileViews.clear();
     this.enemyViews.clear();
+    this.healthViews.clear();
+    this.healthLayer = null;
     this.enemyLayer = null;
     this.projectileLayer = null;
     this.islandLayer = null;

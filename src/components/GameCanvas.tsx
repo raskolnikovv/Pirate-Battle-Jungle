@@ -3,17 +3,24 @@ import { useEffect, useRef, useState } from 'react';
 import { DEFAULT_GAME_CONFIG, type GameConfig } from '@/config/gameConfig';
 import { destroyGameAssets, loadGameAssets, type GameAssets } from '@/game/assets/gameAssets';
 import { Game } from '@/game/core/Game';
+import type { GameHudSnapshot } from '@/game/core/GameHudSnapshot';
 import { GameRenderer } from '@/game/rendering/GameRenderer';
 
 interface GameCanvasProps {
   config?: GameConfig;
+  onHudChange?: (snapshot: GameHudSnapshot | null) => void;
 }
 
 type CanvasStatus = 'loading' | 'ready' | 'error';
 
-export function GameCanvas({ config = DEFAULT_GAME_CONFIG }: GameCanvasProps) {
+export function GameCanvas({ config = DEFAULT_GAME_CONFIG, onHudChange }: GameCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<CanvasStatus>('loading');
+  const hudCallbackRef = useRef(onHudChange);
+
+  useEffect(() => {
+    hudCallbackRef.current = onHudChange;
+  }, [onHudChange]);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,6 +51,7 @@ export function GameCanvas({ config = DEFAULT_GAME_CONFIG }: GameCanvasProps) {
 
     async function initialize(): Promise<void> {
       setStatus('loading');
+      hudCallbackRef.current?.(null);
 
       try {
         assets = await loadGameAssets();
@@ -78,7 +86,9 @@ export function GameCanvas({ config = DEFAULT_GAME_CONFIG }: GameCanvasProps) {
         renderer = new GameRenderer(config.arenaWidth, config.arenaHeight);
         renderer.attach(app, assets);
 
-        game = new Game(renderer);
+        game = new Game(renderer, (snapshot) => {
+          if (!cancelled) hudCallbackRef.current?.(snapshot);
+        });
         game.start(config);
         setStatus('ready');
       } catch (error) {
@@ -103,8 +113,8 @@ export function GameCanvas({ config = DEFAULT_GAME_CONFIG }: GameCanvasProps) {
       ref={containerRef}
       style={{
         position: 'relative',
-        width: 'min(100%, 960px, calc((100vh - 120px) * 1.6))',
-        aspectRatio: '8 / 5',
+        width: `min(100%, ${config.arenaWidth}px, calc((100svh - 220px) * ${config.arenaWidth / config.arenaHeight}))`,
+        aspectRatio: `${config.arenaWidth} / ${config.arenaHeight}`,
         border: '2px solid #334155',
         borderRadius: 12,
         overflow: 'hidden',
@@ -122,7 +132,7 @@ export function GameCanvas({ config = DEFAULT_GAME_CONFIG }: GameCanvasProps) {
             color: '#e2e8f0',
           }}
         >
-          Carregando arena...
+          Loading arena...
         </div>
       )}
       {status === 'error' && (
@@ -138,8 +148,7 @@ export function GameCanvas({ config = DEFAULT_GAME_CONFIG }: GameCanvasProps) {
             textAlign: 'center',
           }}
         >
-          Não foi possível carregar os assets do jogo. Volte ao menu e tente
-          novamente.
+          Unable to load game assets. Return to the menu and try again.
         </div>
       )}
     </div>

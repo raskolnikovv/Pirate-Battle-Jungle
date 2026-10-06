@@ -10,7 +10,7 @@ A arquitetura planejada separa a interface e navegação React da simulação e 
 
 Já existem telas de menu, opções, jogo, resultado, ranking e histórico; navegação local entre elas; endpoints e respostas simuladas para ranking, histórico e envio de partida; e um teste E2E básico. `GameCanvas` inicializa e destrói uma aplicação PixiJS, e `GameLoop` tem uma estrutura de timestep fixo.
 
-A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← e D/→. Space dispara pela proa; Q/E lançam três balas paralelas. Chaser e Shooter surgem periodicamente com seed e posições validadas. A partida usa countdown da simulação, padrão 120 s; ao expirar, congela o gameplay e mantém a arena visível. Pontuação, barras de vida, término por morte, transição automática para resultado, pausa, sons e integração de gameplay com API continuam pendentes.
+A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← e D/→. Space dispara pela proa; Q/E lançam três balas paralelas. Chaser e Shooter surgem periodicamente com seed e posições validadas. A partida usa countdown da simulação, padrão 120 s; ao expirar, congela o gameplay e mantém a arena visível. Pontuação autoritativa soma 1 por inimigo eliminado por projétil do jogador; autodestruição não pontua. HP zero encerra por defeated e congela o gameplay. Barras de vida, HUD real, transição automática para resultado, pausa, sons e integração de gameplay com API continuam pendentes.
 
 ## 2. Como a arquitetura funciona
 
@@ -18,10 +18,10 @@ A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← 
 - **PixiJS:** `GameCanvas` inicializa uma `Application` com coordenadas lógicas 960 × 600 e resolução do dispositivo; o canvas é escalado via CSS mantendo proporção. O ticker automático do Pixi fica desligado para usar o loop do jogo.
 - **Game:** valida duração 60–180 s, copia config e cria estado/SpawnSystem novos. Atualiza countdown e coordena sistemas somente com status running; ao terminar, remove input e mantém renderização do estado congelado.
 - **GameLoop:** usa `requestAnimationFrame`, acumula tempo e chama `update` em passos fixos de 1/60 s; limita delta longo a 250 ms. Chama render em cada frame e calcula `alpha`, ainda não usado para interpolação.
-- **GameState:** guarda entidades, cooldowns, IDs, duração, remainingSeconds, elapsedSeconds, status running/finished e finishReason. Esses dados são autoritativos; nenhum objeto Pixi fica no estado. O antigo boolean isRunning foi substituído pelo status.
+- **GameState:** guarda entidades, score, cooldowns, IDs, duração, remainingSeconds, elapsedSeconds, status running/finished e finishReason. Esses dados são autoritativos; nenhum objeto Pixi fica no estado. O antigo boolean isRunning foi substituído pelo status.
 - **GameRenderer:** repete água, compõe ilhas e desenha jogador, Chaser, Shooter e balas de ambas as equipes. Mapas por ID reutilizam sprites e destroem os removidos. Não calcula IA, colisão nem dano. Debug opcional desenha os colliders amarelos dos inimigos.
 - **InputManager:** captura W/↑, A/←, D/→, Space, Q e E enquanto a partida está montada; devolve um snapshot para a simulação. Previne o comportamento padrão dessas teclas e remove listeners/reseta o input ao destruir.
-- **Sistemas de gameplay:** `MovementSystem` move navios/balas; `CollisionSystem` detecta impactos; `CombatSystem` aplica dano/armas. `SpawnSystem` controla countdown, PRNG e IDs, valida posições e chama factories. Não contém IA.
+- **Sistemas de gameplay:** `MovementSystem` move navios/balas; `CollisionSystem` detecta impactos; `CombatSystem` aplica dano/armas e pontua somente golpes fatais de projéteis do jogador. `SpawnSystem` controla countdown, PRNG e IDs, valida posições e chama factories. Não contém IA.
 - **GameConfig:** inclui dimensões lógicas da arena e limite da nave. `Game.start(config)` copia os valores ao iniciar. Factories recebem valores explicitamente; nenhuma entidade busca secretamente `DEFAULT_GAME_CONFIG`.
 - **Axios:** cliente HTTP configurado com base `/api` e timeout de 10 segundos. As funções de endpoints usam esse cliente para ranking, histórico e submissão.
 - **TanStack Query:** hooks `useRanking` e `useHistory` consultam as telas e armazenam os resultados em cache. `useSubmitMatch` existe e invalida as consultas após sucesso, mas ainda não é chamado por uma tela.
@@ -30,7 +30,7 @@ A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← 
 
 **Fluxo existente da interface:** `main.tsx` inicia MSW em desenvolvimento e monta `App` dentro de `StrictMode` e `ReactQueryProvider`. `App` escolhe a tela. Ranking e histórico usam hooks TanStack Query → endpoints Axios → handlers MSW no ambiente de desenvolvimento.
 
-**Fluxo da partida:** `GameCanvas` carrega texturas e liga Pixi/renderer/jogo. Game verifica lifecycle e limita delta ao tempo disponível. Cada subpasso executa movimento/IA → ilha → armas → impactos → Shooter → contato → spawn, então reduz o countdown e detecta time-up. Depois de finished, update retorna antes dos sistemas e render continua. React não decrementa nem recebe o timer por frame.
+**Fluxo da partida:** `GameCanvas` carrega texturas e liga Pixi/renderer/jogo. Game verifica lifecycle e limita delta ao tempo disponível. Cada subpasso contabiliza seu tempo ativo e executa movimento/IA → ilha → armas → impactos → Shooter → contato → spawn, então detecta time-up. Dano letal durante impactos ou contato chama finishMatch imediatamente e interrompe as ações restantes. Depois de finished, update retorna antes dos sistemas e render continua. React não decrementa nem recebe o timer por frame.
 
 ## 3. Decisões técnicas
 
@@ -665,7 +665,61 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 
 **Validação realizada:** typecheck, build e lint passaram pelo npm-cli instalado; launcher npm quebrado é condição preexistente. Aviso de chunk > 500 kB permanece: principal 989,58 kB minificado. Verificações temporárias, sem arquivos de teste adicionados, passaram para desconto por delta, snapshot da duração, validação 60–180, último passo limitado a 0,005 s, zero exato, transição única, freeze completo do estado e internos do spawn após 600 updates, render recebendo estado final, reset no start após finished, deadlines em 3600/7200/10800 ticks e ausência de término por vida zero. Renderer/RAF foram substituídos nesses checks; nenhum gameplay de navegador ou E2E foi executado.
 
+### Etapa 12 — Marco #7, parte 2: pontuação e derrota
+
+**Status:** Concluído
+
+**Responsável pela implementação:** Colaborativo. Regras, valores e lifecycle foram decididos em colaboração; Codex implementou o código.
+
+**O que foi implementado:** score no GameState, recompensas tipadas por tipo, atribuição do golpe fatal, proteção contra duplicação, derrota por HP zero e congelamento central reutilizado do timer.
+
+**Conformidade com as instruções originais:** o pedido anexado propunha Chaser 10/Shooter 20, mas INSTRUCOES.md exige 1 ponto por inimigo destruído pelos ataques do jogador. Conforme orientação anterior do usuário, Codex pausou e apontou o conflito antes de alterar código. O usuário confirmou seguir a regra original: Chaser 1, Shooter 1, autodestruição 0. Registrar também no relatório para o agente coordenador respeitar as instruções originais e consultar o usuário diante de conflitos futuros. Isso não autoriza implementar todos os requisitos originais de uma vez.
+
+**Arquivos principais envolvidos:** src/config/gameConfig.ts; src/game/core/Game.ts; src/game/core/GameState.ts; src/game/systems/CombatSystem.ts; src/game/systems/CollisionSystem.ts; este diário.
+
+**Como funciona:**
+
+- enemyKillRewards contém chaser: 1 e shooter: 1, copiados no snapshot do start. CombatSystem não contém recompensas literais.
+- CollisionEvent de projétil contra inimigo exige isPlayerOwned. Game preserva essa informação antes de consumir o projétil. CombatSystem verifica inimigo vivo, aplica dano limitado a zero e, somente no golpe fatal do jogador, soma a recompensa e remove o inimigo imediatamente.
+- Remoção por contato não passa pela pontuação: aplica dano uma vez e remove o Chaser. Eventos seguintes encontram entidade ausente. Vários tiros no mesmo passo não podem pontuar a mesma morte novamente.
+- Game verifica HP após cada impacto inimigo e cada contato; HP é limitado a zero e finishMatch('defeated') encerra imediatamente. Nenhum projétil posterior, contato posterior ou spawn é processado. Em derrota por projétil, nem os disparos de Shooter seguintes são processados. Disparos já executados antes de um contato letal permanecem na cena final.
+- O tempo do subpasso ativo é contabilizado antes das regras, sem precisão subframe do instante do impacto. Expiração é reconhecida ao final. Dano letal no último subpasso vence; se o update já começa sem tempo, time_expired vence antes de processar dano. finishMatch só aceita running e preserva o primeiro motivo.
+- Guard central bloqueia updates posteriores: score, HP, movimento, projéteis, cooldowns e spawn ficam congelados. Input é removido/resetado; RAF continua desenhando a última cena até cleanup.
+- Start após término recria estado e SpawnSystem: score 0, HP máximo configurado, duração cheia, running, motivo null, mapas/cooldowns/IDs limpos e seed reiniciada.
+
+**Por que foi feito dessa forma:** causa da morte decide pontos; remover entidade por si só não indica mérito do jogador. A remoção imediata evita duplicação sem event bus. Game coordena fim por tempo e derrota em um único método; sistemas não controlam navegação.
+
+**Resultado/HUD futuros:** getState contém score final, HP, duração, tempo decorrido/restante e motivo. GameFinishReason usa time_expired/defeated; contratos antigos de Result/API ainda usam player_defeated. A futura integração precisará mapear defeated para player_defeated ou unificar contratos deliberadamente. Callbacks continuam scaffolding. UI poderá receber snapshots quando valores apresentados mudarem, sem possuir regras nem atualizar a 60 FPS. Não há contagem independente de inimigos derrotados; com recompensa padrão 1, score coincide com kills válidos, mas isso não vale para configurações customizadas.
+
+**O que eu preciso entender:** código implementado pelo Codex; estudar atribuição de morte, união discriminada do evento, snapshot aninhado, ordem determinística, retorno antecipado e máquina de estados running/finished.
+
+**Como testar manualmente:**
+
+1. Start Game. Em DevTools/Sources, breakpoint em createInitialState: score 0, HP 100, duration/remaining 120, running e motivo null.
+2. Breakpoint em CombatSystem.applyCollision. Usar Space ou Q/E contra cada tipo: dano não fatal mantém score; HP 50 → 25 → 0 soma exatamente 1. Vários impactos não somam novamente para o mesmo ID. HUD Score ainda mostra placeholder 0.
+3. Reiniciar e deixar Chaser encostar: HP reduz 20, entidade some e score não muda. Para observar derrota rapidamente, no debugger ajustar HP para 1 antes de continuar; contato ou tiro inimigo deve produzir HP 0, finished/defeated.
+4. Em finishMatch observar score/elapsed/remaining finais. Continuar, segurar W/Space/Q/E e esperar além do intervalo de spawn: cena e dados permanecem congelados, sem navegação automática.
+5. Sair pelo botão existente e iniciar outra partida: HP 100, score 0, cronômetro completo, sem entidades antigas; primeiro spawn após intervalo configurado.
+6. Para time-up rápido, no debugger ajustar remainingSeconds para 0.005 e elapsedSeconds para durationSeconds - 0.005. Sem golpe letal, o próximo update termina time_expired. Com golpe letal nesse último período termina defeated. Com remaining já zero, nenhum dano novo ocorre.
+
+**Possíveis perguntas de entrevista:**
+
+- Onde ficam pontos e por que React não calcula? “No GameState; a simulação conhece dano e morte. React apenas apresentará snapshots.”
+- Como decide se uma morte pontua? “O inimigo estava vivo e recebeu o golpe fatal de projétil do jogador.”
+- Por que contato vale zero? “O Chaser se autodestrói; isso não é uma eliminação por ataque do jogador.”
+- Como impede duplicação? “Consumo a bala e removo o inimigo imediatamente; eventos seguintes não encontram um alvo vivo.”
+- Como termina em HP zero? “Limito HP a zero e Game chama o mesmo finishMatch usado pelo timer.”
+- E se tempo e derrota coincidem? “Processo dano no último período ativo antes do time-up; se o tempo já acabou ao entrar, não processo gameplay.”
+
+**Validação realizada:** checks temporários de código, sem arquivos de teste, passaram para recompensas 1/1, dano não fatal, origem não jogadora, contato sem pontos/dano duplicado, mortes sem pontuação repetida, tiro/contato letal, HP zero, interrupção antes de projétil posterior, freeze por 600 updates incluindo internos do spawn, restart, ordem no deadline, timer de 120 s em 7200 ticks e snapshot customizado de recompensa. Renderer/RAF substituídos: isso não comprova integração visual ou lifecycle no browser. Typecheck, build e lint passaram pelo npm-cli instalado. O launcher npm permanece quebrado (problema preexistente). Build mantém aviso de chunk > 500 kB: principal 990,06 kB minificado. Nenhum erro de tipos ou lint.
+
+**Limitações:** HUD e Result continuam desconectados; nenhum E2E, pausa, API, barras, efeitos ou som adicionado. Não houve validação manual no navegador. Há diferença de nomenclatura entre motivo da simulação e contrato antigo da UI/API. Renderização permanece ativa após fim.
+
 ## 5. Conceitos importantes para estudar
+
+- **Atribuição de morte:** pontuação depende de quem causou o golpe fatal, e não apenas da ausência de um inimigo.
+- **Transição idempotente:** finishMatch só muda running uma vez; chamadas posteriores preservam motivo e resultado.
+- **Retorno antecipado:** sair do update imediatamente após derrota impede ações posteriores no mesmo passo.
 
 - **Tempo simulado vs. relógio real:** tempo do jogo é soma dos deltas executados; relógio de parede continua passando mesmo sem updates. O loop pode limitar atrasos.
 - **Estado autoritativo e lifecycle:** GameState decide tempo/status reais; running permite regras e finished impede avanço. Renderizar não significa simular.
@@ -710,6 +764,10 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 
 ## 6. Perguntas que eu deveria conseguir responder
 
+- **Como evita pontos duplicados?** “O golpe fatal remove o inimigo; outro evento não encontra um alvo vivo.”
+- **Quem decide derrota e empate com timer?** “Game centraliza o término: dano no último passo ativo vem antes do time-up; tempo já zero impede gameplay.”
+- **Por que contato não pontua?** “Não foi um golpe fatal de projétil do jogador.”
+
 - **Quem controla o timer?** “Game reduz o tempo no GameState usando delta; React não executa countdown.”
 - **O que congela após o fim?** “Todos os sistemas deixam de ser chamados: movimento, armas, projéteis, dano, cooldowns e spawn.”
 - **Como impede término duplicado?** “O update e finishMatch verificam se o status ainda é running.”
@@ -742,6 +800,8 @@ Constructor rejeita intervalo não positivo/não finito, pesos inválidos/soma z
 - **O que os testes automatizados garantem hoje?** “A abertura do menu e alguns caminhos de navegação. Não garantem que o jogo seja jogável.”
 
 ## 7. Pontos que ainda não domino
+
+- **Pontuação/derrota implementadas pelo Codex em colaboração:** revisar causa da morte, snapshot das recompensas, interrupção imediata, contabilização do último subpasso e diferença defeated/player_defeated antes de conectar Result. Entender que histórico anterior registra o comportamento de cada etapa, não o comportamento atual.
 
 - **Timer implementado pelo Codex em colaboração:** revisar delta parcial final, precisão de ponto flutuante, guard central e reset do loop após finished. Saber explicar por que o HUD ainda não mostra o timer e qual seria a sincronização futura.
 

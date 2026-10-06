@@ -1,5 +1,4 @@
 import { DEFAULT_GAME_CONFIG, SESSION_DURATION_LIMITS, type GameConfig } from '@/config/gameConfig';
-import type { MatchEndReason } from '@/types/domain';
 import { createPlayer } from '../entities/Player';
 import { createIsland } from '../entities/Island';
 import { InputManager } from '../input/InputManager';
@@ -9,7 +8,7 @@ import { CollisionSystem } from '../systems/CollisionSystem';
 import { CombatSystem } from '../systems/CombatSystem';
 import { SpawnSystem } from '../systems/SpawnSystem';
 import { GameLoop } from './GameLoop';
-import type { GameState } from './GameState';
+import type { GameFinishReason, GameState } from './GameState';
 
 const PLAYER_ID = 'player';
 
@@ -18,6 +17,7 @@ function copyConfig(config: GameConfig): GameConfig {
     ...config,
     weaponCooldowns: { ...config.weaponCooldowns },
     enemySpawnWeights: { ...config.enemySpawnWeights },
+    enemyKillRewards: { ...config.enemyKillRewards },
     chaser: { ...config.chaser },
     shooter: { ...config.shooter },
   };
@@ -105,6 +105,7 @@ export class Game {
       this.finishMatch('time_expired');
       return;
     }
+    if (this.finishIfDefeated()) return;
     if (!Number.isFinite(deltaSeconds) || deltaSeconds <= 0) return;
     // The final update simulates only the time still available in the match.
     const simulationSeconds = Math.min(deltaSeconds, this.state.remainingSeconds);
@@ -119,23 +120,24 @@ export class Game {
     )));
     for (let step = 0; step < steps; step += 1) {
       const stepSeconds = Math.min(simulationSeconds / steps, this.state.remainingSeconds);
+      // Account for this active step even if lethal damage ends it early.
+      this.state.remainingSeconds = Math.max(0, this.state.remainingSeconds - stepSeconds);
+      if (this.state.remainingSeconds <= 1e-9) this.state.remainingSeconds = 0;
+      this.state.elapsedSeconds = this.state.durationSeconds - this.state.remainingSeconds;
       this.movementSystem.update(this.state, input, stepSeconds, this.configSnapshot);
       this.movementSystem.updateEnemies(this.state, stepSeconds, this.configSnapshot);
       this.collisionSystem.resolveShipsIslands(this.state);
       this.combatSystem.update(this.state, input, stepSeconds, this.configSnapshot);
-      this.updateProjectiles(this.state, stepSeconds, this.configSnapshot);
+      if (this.updateProjectiles(this.state, stepSeconds, this.configSnapshot)) return;
       // Resolve existing shots first: a Shooter killed this step cannot fire.
       // Newly fired enemy shots start moving on the next simulation step.
       this.combatSystem.updateShooters(this.state, stepSeconds, this.configSnapshot);
       for (const event of this.collisionSystem.chaserContacts(this.state)) {
-        this.combatSystem.applyCollision(this.state, event);
+        this.combatSystem.applyCollision(this.state, event, this.configSnapshot);
+        if (this.finishIfDefeated()) return;
       }
       // New enemies begin AI/combat on the next step, preserving their validated spawn position.
       this.spawnSystem?.update(this.state, stepSeconds);
-      this.state.remainingSeconds = Math.max(0, this.state.remainingSeconds - stepSeconds);
-      // Remove only near-zero floating-point residue, without rounding the countdown.
-      if (this.state.remainingSeconds <= 1e-9) this.state.remainingSeconds = 0;
-      this.state.elapsedSeconds = this.state.durationSeconds - this.state.remainingSeconds;
       if (this.state.remainingSeconds <= 0) {
         this.finishMatch('time_expired');
         return;
@@ -143,14 +145,22 @@ export class Game {
     }
   }
 
-  private finishMatch(reason: MatchEndReason): void {
+  private finishIfDefeated(): boolean {
+    const player = this.state?.players.values().next().value;
+    if (!player || player.health > 0) return false;
+    player.health = 0;
+    this.finishMatch('defeated');
+    return true;
+  }
+
+  private finishMatch(reason: GameFinishReason): void {
     if (this.state?.status !== 'running') return;
     this.state.status = 'finished';
     this.state.finishReason = reason;
     this.input.detach();
   }
 
-  private updateProjectiles(state: GameState, deltaSeconds: number, config: GameConfig): void {
+  private updateProjectiles(state: GameState, deltaSeconds: number, config: GameConfig): boolean {
     for (const projectile of state.projectiles.values()) {
       const next = this.movementSystem.nextProjectilePosition(projectile, deltaSeconds);
       const hit = projectile.lifetime > 0
@@ -165,18 +175,21 @@ export class Game {
           this.combatSystem.applyCollision(state, {
             type: 'projectile-enemy', sourceId: projectile.id,
             targetId: hit.enemyId, damage: projectile.damage,
-          });
+            isPlayerOwned: projectile.isPlayerOwned,
+          }, config);
         } else if (hit?.playerId) {
           this.combatSystem.applyCollision(state, {
             type: 'projectile-player', sourceId: projectile.id,
             targetId: hit.playerId, damage: projectile.damage,
-          });
+          }, config);
+          if (this.finishIfDefeated()) return true;
         }
       } else {
         projectile.x = next.x;
         projectile.y = next.y;
       }
     }
+    return false;
   }
 
   private render(alpha: number): void {

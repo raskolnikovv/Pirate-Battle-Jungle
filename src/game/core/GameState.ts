@@ -1,6 +1,8 @@
 import type { GameConfig } from '@/config/gameConfig';
-import type { Enemy, MatchEndReason, Player, Projectile } from '@/types/domain';
+import type { Enemy, Player, Projectile } from '@/types/domain';
 import type { Island } from '../entities/Island';
+
+export type GameFinishReason = 'time_expired' | 'defeated';
 
 export interface GameState {
   players: Map<string, Player>;
@@ -14,11 +16,11 @@ export interface GameState {
   durationSeconds: number;
   remainingSeconds: number;
   status: 'running' | 'finished';
-  finishReason: MatchEndReason | null;
+  finishReason: GameFinishReason | null;
 }
 
 export interface GameCallbacks {
-  onMatchEnd?: (reason: 'time_expired' | 'player_defeated' | 'quit') => void;
+  onMatchEnd?: (reason: GameFinishReason) => void;
   onScoreChange?: (score: number) => void;
 }
 

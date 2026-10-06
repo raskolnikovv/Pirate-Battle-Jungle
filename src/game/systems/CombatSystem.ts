@@ -6,12 +6,16 @@ import type { InputSnapshot } from '../input/InputManager';
 import type { CollisionEvent } from './CollisionSystem';
 
 export class CombatSystem {
-  applyCollision(state: GameState, event: CollisionEvent): void {
+  applyCollision(state: GameState, event: CollisionEvent, config: GameConfig): void {
+    if (state.status !== 'running') return;
     if (event.type === 'projectile-enemy') {
       const enemy = state.enemies.get(event.targetId);
       if (!enemy || enemy.health <= 0) return;
       enemy.health = Math.max(0, enemy.health - event.damage);
-      if (enemy.health === 0) state.enemies.delete(enemy.id);
+      if (enemy.health === 0) {
+        state.enemies.delete(enemy.id);
+        if (event.isPlayerOwned) state.score += config.enemyKillRewards[enemy.type];
+      }
     } else if (event.type === 'projectile-player') {
       const player = state.players.get(event.targetId);
       if (player) player.health = Math.max(0, player.health - event.damage);

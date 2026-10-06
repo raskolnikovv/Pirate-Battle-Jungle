@@ -36,6 +36,7 @@ export interface GameConfig {
   sessionDuration: number;
   enemySpawnInterval: number;
   enemySpawnWeights: { chaser: number; shooter: number };
+  enemyKillRewards: { chaser: number; shooter: number };
   enemySpawnMinimumDistance: number;
   enemySpawnMaxAttempts: number;
   enemySpawnMargin: number;
@@ -66,6 +67,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = {
   sessionDuration: 120,
   enemySpawnInterval: 3,
   enemySpawnWeights: { chaser: 60, shooter: 40 },
+  enemyKillRewards: { chaser: 1, shooter: 1 },
   enemySpawnMinimumDistance: 320,
   enemySpawnMaxAttempts: 20,
   enemySpawnMargin: 66,

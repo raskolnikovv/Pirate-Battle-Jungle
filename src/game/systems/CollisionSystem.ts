@@ -1,12 +1,14 @@
 import type { GameState } from '../core/GameState';
 import type { Projectile } from '@/types/domain';
 
-export interface CollisionEvent {
-  type: 'projectile-player' | 'projectile-enemy' | 'enemy-player';
+export type CollisionEvent = {
   sourceId: string;
   targetId: string;
   damage: number;
-}
+} & (
+  | { type: 'projectile-enemy'; isPlayerOwned: boolean }
+  | { type: 'projectile-player' | 'enemy-player' }
+);
 
 interface ProjectileHit {
   fraction: number;

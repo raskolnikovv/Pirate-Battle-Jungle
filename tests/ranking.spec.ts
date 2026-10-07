@@ -9,7 +9,9 @@ test('third and fourth completed matches remain visible after a worker interrupt
     localStorage.setItem('pirate-battle:options:v1', JSON.stringify({
       version: 1, sessionDuration: 60, enemySpawnInterval: 3,
     }));
-    const gamePath = '/src/game/core/Game.ts';
+    const gamePath = performance.getEntriesByType('resource')
+      .find((entry) => entry.name.includes('/src/game/core/Game.ts'))?.name;
+    if (!gamePath) throw new Error('Loaded Game module not found.');
     const { Game } = await import(gamePath);
     const start = Game.prototype.start;
     Game.prototype.start = function (config: unknown) {

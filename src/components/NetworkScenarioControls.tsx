@@ -25,13 +25,21 @@ export function NetworkScenarioControls() {
   }
   async function reset() {
     setResetting(true);
+    await Promise.all([
+      queryClient.cancelQueries({ queryKey: ['ranking'] }),
+      queryClient.cancelQueries({ queryKey: ['history'] }),
+    ]);
     // No in-flight submissions may repopulate the reset server or queue.
     const confirmed = resetConfirmedMockMatches();
     const pending = resetPendingMatches();
-    queryClient.removeQueries({ queryKey: ['match-registration'] });
-    await select('success', 'all');
-    setMessage(confirmed && pending ? 'Reset complete: initial fixtures restored; confirmed and pending matches cleared.'
-      : 'Reset incomplete: storage could not be cleared. Check pending storage warnings.');
+    const scenarioSaved = selectNetworkScenario({ scenario: 'success', target: 'all' });
+    // These screens are inactive here. Invalidation alone retains their old rows
+    // until a successful refetch, allowing deleted matches to reappear on navigation.
+    queryClient.removeQueries({ queryKey: ['ranking'] });
+    queryClient.removeQueries({ queryKey: ['history'] });
+    await queryClient.resetQueries({ queryKey: ['match-registration'] });
+    setMessage(confirmed && pending && scenarioSaved ? 'Reset complete: initial fixtures restored; confirmed and pending matches cleared.'
+      : 'Reset incomplete: local data or scenario selection could not be saved. Check storage warnings.');
     setResetting(false);
   }
   return <details style={{ width: '100%', marginTop: 20, padding: 12, border: '1px dashed #94a3b8', borderRadius: 8 }}>
@@ -49,7 +57,7 @@ export function NetworkScenarioControls() {
         <option value="history">Match History</option><option value="matches">Match submission</option>
       </select></p>
     <p>Selection survives refresh; delay counters restart. Slow: 1.5s. Timeouts: 10s client / 11s server.</p>
-    <p>Reset deletes confirmed and pending matches. Options and the last local result are preserved.</p>
+    <p>Reset restores Success / All and deletes played and pending matches. Baseline sample matches remain. Options and the last local result are preserved.</p>
     <button className="pause-action" disabled={submitting || resetting} onClick={() => { void reset(); }}>Reset network demo</button>
     {submitting && <p>Wait for the active submission before changing or resetting the scenario.</p>}
     {message && <p role="status">{message}</p>}

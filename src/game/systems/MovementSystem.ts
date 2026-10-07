@@ -3,6 +3,9 @@ import type { GameState } from '../core/GameState';
 import type { InputSnapshot } from '../input/InputManager';
 import type { Projectile } from '@/types/domain';
 
+// Input precision tolerance (~0.57 degrees), not a different rotation speed.
+const TOUCH_HEADING_TOLERANCE = 0.01;
+
 export class MovementSystem {
   nextProjectilePosition(projectile: Projectile, deltaSeconds: number): { x: number; y: number } {
     const travelTime = Math.min(deltaSeconds, Math.max(0, projectile.lifetime));
@@ -48,9 +51,23 @@ export class MovementSystem {
     const rotationDirection = Number(input.turnRight) - Number(input.turnLeft);
     player.rotation += rotationDirection * config.playerRotationSpeed * deltaSeconds;
 
-    if (input.forward) {
-      player.x += Math.sin(player.rotation) * config.playerMovementSpeed * deltaSeconds;
-      player.y -= Math.cos(player.rotation) * config.playerMovementSpeed * deltaSeconds;
+    const direction = input.touchDirection;
+    const touchThrottle = direction ? Math.min(1, Math.hypot(direction.x, direction.y)) : 0;
+    // Explicit keyboard steering wins on hybrid devices; keyboard-only math is unchanged.
+    if (direction && touchThrottle > 0 && !input.turnLeft && !input.turnRight) {
+      const desiredHeading = Math.atan2(direction.x, -direction.y);
+      const difference = desiredHeading - player.rotation;
+      const shortestAngle = Math.atan2(Math.sin(difference), Math.cos(difference));
+      if (Math.abs(shortestAngle) > TOUCH_HEADING_TOLERANCE) {
+        const turn = Math.min(Math.abs(shortestAngle), config.playerRotationSpeed * deltaSeconds);
+        player.rotation += Math.sign(shortestAngle) * turn;
+      }
+    }
+
+    const throttle = input.forward ? 1 : touchThrottle;
+    if (throttle > 0) {
+      player.x += Math.sin(player.rotation) * config.playerMovementSpeed * deltaSeconds * throttle;
+      player.y -= Math.cos(player.rotation) * config.playerMovementSpeed * deltaSeconds * throttle;
     }
 
     const padding = config.playerBoundaryPadding;

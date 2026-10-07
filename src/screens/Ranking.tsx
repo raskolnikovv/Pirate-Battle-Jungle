@@ -6,6 +6,7 @@ import { DEFAULT_GAME_CONFIG } from '@/config/gameConfig';
 import { loadGameOptions } from '@/config/gameOptions';
 import { getGameConfigKey } from '@/config/gameConfigKey';
 import { PaginationControls } from '@/components/PaginationControls';
+import { LOCAL_PLAYER } from '@/config/localPlayer';
 import type { ScreenName } from "@/app/navigationTypes";
 
 interface RankingProps {
@@ -80,7 +81,9 @@ export function Ranking({ onNavigate }: RankingProps) {
                     >
                       {entry.rank}
                     </td>
-                    <td style={{ padding: "12px 16px" }}>{entry.playerName}<small style={{ display: 'block', color: '#cbd5e1' }}>{entry.playerId}</small></td>
+                    <td style={{ padding: "12px 16px" }}>{entry.playerName}
+                      {entry.playerId === LOCAL_PLAYER.id && <small style={{ display: 'block', color: '#cbd5e1' }}>You</small>}
+                    </td>
                     <td
                       style={{
                         padding: "12px 16px",

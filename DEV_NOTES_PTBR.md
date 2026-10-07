@@ -4,6 +4,8 @@
 
 ## 1. Visão geral do projeto
 
+**Atualização da etapa 27:** após feedback físico, o joystick agora aponta rumo desejado em 360° com avanço analógico e giro gradual pelo menor arco. Teclado e ataques mantêm suas regras. Cenários de rede configuráveis e touch gameplay da etapa 26 já estão implementados; notas anteriores abaixo registram o estado de suas respectivas etapas.
+
 **Atualização da etapa 24:** conclusões agora entram em uma coleção local de pendências antes do POST. Falhas sobrevivem ao refresh e permitem retry explícito no Result/menu, com várias partidas independentes. Confirmação remove a pendência; reenvio recupera o mesmo registro pelo matchId. Cenários configuráveis completos e sincronização entre abas seguem futuros.
 
 **Estado atual após a etapa 23:** conclusões aceitas pelo MSW agora persistem após refresh em uma coleção versionada, compartilhada por ranking/histórico. Reenvios iguais recuperam o registro; IDs conflitantes recebem 409. Pendências e retries continuam futuros. As etapas anteriores preservam os limites que existiam quando foram implementadas.
@@ -1356,7 +1358,179 @@ Cenários disponíveis: sucesso; listas vazias; múltiplas páginas; lentidão; 
 
 **Possível pergunta de entrevista:** Por que atualizar seletores dos testes? “Eles procuram o nome que o usuário e as tecnologias assistivas encontram na interface.”
 
+### Etapa 26 — Joystick virtual e ataques por toque
+
+**Status:** Concluído
+
+**Responsável pela implementação:** Colaborativo — código e testes pelo Codex; revisão e teste em aparelho pelo desenvolvedor.
+
+**O que foi implementado:** Um joystick à esquerda e três botões de ataque à direita em dispositivos com ponteiro coarse/toque. Teclado e ponteiros alimentam as mesmas seis intenções booleanas. Movimentação, armas, dano, cooldowns, pausa e APIs preservam suas regras. Seguimos `INSTRUCOES.md`; ela exige os comandos, sem obrigar três botões separados de movimento da imagem de referência. Nenhum commit realizado.
+
+**Arquivos principais envolvidos:** `game/input/InputManager.ts`, `game/core/Game.ts`, `components/GameCanvas.tsx`, `components/TouchControls.tsx`, `screens/Game.tsx`, `game/assets/touchAssets.ts`, `index.css`, `index.html`, `tests/touchControls.spec.ts` e `README.md`.
+
+**Como funciona:** TouchControls envia intenções pelo handle/ref de GameCanvas → Game → InputManager. Game aceita entradas de ponteiro apenas enquanto running; sistemas consomem o mesmo InputSnapshot existente. InputManager mantém um Set de teclas e Map de fontes por ID, combinando ações com OR. Soltar uma fonte não remove uma ação que outra ainda mantém, inclusive entre teclado e toque. Os sistemas não conhecem a origem do comando e não recebem KeyboardEvents artificiais.
+
+**Joystick:** Normalizamos a posição pelo raio do controle e limitamos o deslocamento ao círculo. Cada eixo tem zona morta de 22%: y negativo acima desse limiar ativa forward; x negativo/positivo ativa turnLeft/turnRight. Diagonais superiores combinam avanço e giro. Descer não ativa ré. A intensidade continua binária e usa velocidades já configuradas, para preservar os sistemas existentes. A bolinha acompanha o dedo por transform no DOM, sem setState a cada movimento/frame.
+
+**Ataques:** Front shot = Space, Left broadside = Q, Right broadside = E. Segurar ativa o mesmo flag contínuo usado pelo CombatSystem, que controla a frequência por tempo de simulação. Os três botões têm feedback de pressionado e nomes/textos acessíveis. Quando focados, Space/Enter também mantém o ataque correspondente; InputManager respeita preventDefault desses eventos para evitar um segundo tiro frontal involuntário. IDs negativos identificam essas ativações por teclado dos botões, sem conflitar com pointer IDs do navegador.
+
+**Multi-touch e lifecycle:** Cada ponteiro tem pointer capture e ID próprio; joystick aceita um dedo, ataques podem coexistir com ele e entre si. Pointerup, pointercancel e lostpointercapture removem só a fonte afetada. Blur, visibilitychange, resize e unmount liberam as capturas e limpam o feedback local. Game.pause/finish/destroy já detacha e reseta InputManager; TouchControls só monta durante running. Após Resume, a UI nova não aceita movimentos de dedos antigos sem um novo pointerdown. Callbacks estáveis evitam reset a cada atualização normal do HUD e listeners são removidos no cleanup, inclusive em Strict Mode.
+
+**Por que foi feito dessa forma:** Preserva a arquitetura de simulação e usa Pointer Events nativos, sem biblioteca ou teclado simulado. React cuida apenas do controle visual e intenções; posição do navio continua fora de React. OR por fontes evita que o pointerup de um ataque pare o joystick. Manter booleanos evita alterar balanceamento e movimento para introduzir aceleração analógica fora do escopo.
+
+**Responsividade:** any-pointer: coarse mostra controles também em dispositivos híbridos, sem depender apenas da largura. Desktop com ponteiro fino mantém instruções de teclado. Retrato e paisagem são suportados; em paisagem larga/baixa reservamos faixas laterais para ampliar a arena sem cobrir HUD/canvas. A área da arena é um size container CSS; GameCanvas usa cqh para medir a altura disponível, mantendo coordenadas lógicas e DPR Pixi existentes. 100dvh acompanha a altura visível; viewport-fit=cover e env(safe-area-inset-*) protegem recortes. touch-action:none e user-select:none ficam nos controles, sem desabilitar zoom/scroll global dos menus. Alvos de ataque têm pelo menos 58px de largura nos tamanhos testados; joystick 90–112px.
+
+**Assets oficiais:** `button_round_normal.png`, `button_round_pressed.png`, `icon_fire_front.png`, `icon_fire_left.png` e `icon_fire_right.png`, em `public/assets/png/default/ui/controls`, com caminhos no manifest. Joystick circular foi feito em CSS; não há sprite oficial específico de joystick no conjunto inspecionado.
+
+**O que eu preciso entender:** Pointer IDs não são IDs de ações; um dedo soltando deve remover só sua própria fonte. Estudar pointer capture, cancelamento, OR entre fontes, zona morta, refs/DOM para feedback visual, cleanup de effects, CSS container units, safe areas e diferença entre emulação Chromium e hardware real. A implementação foi criada com assistência do Codex; revisar antes de explicar como domínio próprio.
+
+**Como testar manualmente:**
+
+1. Em dispositivo de toque, iniciar partida e arrastar joystick para cima/esquerda/direita/diagonais; centro e baixo não devem avançar.
+2. Manter joystick com um dedo e segurar cada ataque com outro. Soltar tiro deve manter movimento; soltar joystick deve manter o tiro sujeito a cooldown.
+3. Pausar enquanto segura controles; Resume não deve reutilizar dedos antigos. Repetir ao trocar aba, desfocar e voltar.
+4. Alternar retrato/paisagem, conferir HUD e botões inteiros, sem scroll horizontal; mudança de tamanho descarta o toque ativo.
+5. Sair e iniciar novamente: nenhum movimento/tiro deve ficar preso. No desktop, conferir todos os atalhos e ausência dos controles de toque em dispositivo sem coarse pointer.
+
+**Possíveis perguntas de entrevista:**
+
+- Como teclado e toque compartilham gameplay? “Ambos alimentam o mesmo snapshot de intenções; movimento e combate não sabem qual dispositivo foi usado.”
+- Por que não disparar KeyboardEvents? “Isso misturaria dispositivos e dificultaria controlar múltiplos dedos e lifecycle.”
+- Por que OR por fontes? “Soltar o dedo do ataque não pode apagar o avanço do joystick nem uma tecla ainda pressionada.”
+- O joystick é analógico? “A posição visual é contínua, mas as intenções são booleanas com zona morta; mantive as velocidades e regras existentes.”
+- Por que limpar ao pausar? “A simulação para, mas dedos podem continuar na tela; retomada exige uma interação nova, sem comandos acumulados.”
+
+**Validação:** 54 testes Chromium passaram (11 novos de toque + 43 regressões de rede, persistência, retry, Ranking e resultado). Cobrem movimento, giro, ataques/cooldown, multitoque, liberação independente, pointercancel, perda de captura, pausa/retomada com dedos antigos ainda na tela, blur/hidden, reinício, orientação e teclado. A instrumentação de `tests/ranking.spec.ts` passou a importar o módulo Game efetivamente carregado para evitar outra instância após HMR; não alteramos a lógica de Ranking. Typecheck, lint e build passaram; inspeção visual em 390×844 e 844×390, e bounds automatizados também em 320×568. Avisos existentes: bundle principal 1.025,50 kB (>500 kB) e NO_COLOR/FORCE_COLOR no runner. Sem commit.
+
+**Limitações:** Validação automatizada em Chromium com emulação mobile e toques reais do browser via CDP. Não houve teste físico em iOS/Android ou Safari. A interface suporta ambas as orientações, sem forçar fullscreen/orientation lock. Menus mobile e redesenho visual completo permanecem fora deste marco.
+
+### Etapa 27 — Rumo desejado em 360° para o joystick
+
+**Status:** Concluído
+
+**Responsável pela implementação:** Colaborativo — feedback do teste físico pelo desenvolvedor; código e testes pelo Codex.
+
+**O que foi implementado:** O teste em telefone mostrou que o joystick visualmente analógico da etapa 26 era pouco intuitivo ao apenas representar W/A/D. Agora o toque aponta um rumo em qualquer direção, incluindo baixo. O navio gira gradualmente para esse rumo e navega para frente; não há ré nem rotação instantânea. W/ArrowUp, A/ArrowLeft, D/ArrowRight e ataques mantêm os comandos anteriores. O histórico da etapa 26 permanece como registro do comportamento que existia.
+
+**Arquivos principais envolvidos:** `game/input/InputManager.ts`, `game/systems/MovementSystem.ts`, `components/TouchControls.tsx`, `index.css`, `tests/touchControls.spec.ts` e `README.md`. Não foi necessário mudar GameConfig, Game, GameCanvas, APIs, colisões ou combate neste ajuste.
+
+**Como funciona:** InputSnapshot mantém seis flags e acrescenta `touchDirection: { x, y } | null`. O vetor usa eixos da tela: x positivo para direita e y positivo para baixo, normalizado pelo raio do joystick e limitado ao círculo de comprimento 1. Dentro da zona morta radial de 22%, a intenção é null. Fora dela, o comprimento indica intensidade e atan2(x, -y) indica o rumo, já que rotação zero do navio olha para cima. TouchControls não envia KeyboardEvents nem calcula novas coordenadas do navio.
+
+MovementSystem compara rumo desejado com rotação atual. `atan2(sin(diferença), cos(diferença))` reduz a diferença ao intervalo [-π, π], escolhendo o menor giro mesmo ao cruzar ±π ou 0/2π. O incremento tem o sinal dessa diferença e tamanho limitado a `playerRotationSpeed × deltaSeconds` ou ao ângulo ainda restante, evitando ultrapassar o alvo. Erros de até 0,01 rad (~0,57°) não provocam novas correções minúsculas. Em uma diferença exata de 180°, ambos os lados têm a mesma distância; não existe preferência física especial.
+
+O avanço usa `playerMovementSpeed × magnitude × deltaSeconds` pela proa atual, com sin/cos da rotação após o giro daquele passo. Assim ele faz uma curva ao virar para baixo; não desliza lateralmente nem anda de ré. Magnitude parcial reduz velocidade de avanço, mas não altera velocidade configurada de giro. A arena e as colisões continuam usando seus sistemas existentes.
+
+**Por que foi feito dessa forma:** O toque é um apontador direcional e precisa de uma intenção mais rica que teclado. Guardar um vetor na entrada separa DOM da regra de navegação, preserva o loop fixo e permite testar sem falsificar teclas. Reaproveitamos o cálculo original de movimento pela proa. Mantivemos GameConfig intacto, incluindo snapshots e comparação de configuração dos registros já persistidos.
+
+**Interação entre fontes:** Ataques continuam OR por fontes/IDs e cooldowns de simulação. Soltar um ataque não remove touchDirection; soltar joystick zera apenas seu vetor. Em dispositivos híbridos, A/D explícitos têm prioridade sobre o giro automático e W/Up mantém velocidade cheia mesmo com intensidade de toque parcial. Sem toque, a matemática W/A/D é igual à anterior, inclusive rotação acumulada e cancelamento de A+D.
+
+**Lifecycle e UI:** Os mesmos pointer IDs, captures e cleanups da etapa 26 permanecem. Pausa, pointercancel, blur, aba oculta, resize e unmount descartam o vetor; Resume exige novo pointerdown. Visibilidade coarse, assets dos ataques, nomes acessíveis e botões por teclado não foram substituídos. A instrução agora é “Point where you want to sail”, com seta para baixo também apresentada; o feedback da bolinha continua via ref/DOM, sem renders por frame.
+
+**O que eu preciso entender:** Convenção dos eixos, atan2, normalização angular, menor arco, integração com delta time, limite por passo, dead zone radial e magnitude analógica. Estudar por que navegar para baixo exige primeiro virar e por que cancelar input não desfaz a posição já simulada. Esta implementação foi feita com assistência do Codex; revisar a matemática e demonstrar no telefone antes de uma entrevista.
+
+**Como testar manualmente:**
+
+1. Apontar para as oito direções e manter o dedo: a proa deve chegar gradualmente ao rumo, inclusive baixo, e seguir para frente.
+2. Mudar abruptamente de cima para baixo: deve haver uma curva com a mesma velocidade de giro, nunca snap ou movimento de ré.
+3. Manter o rumo após alinhamento: não deve oscilar. Usar meio deslocamento e deslocamento máximo para comparar velocidade de avanço.
+4. Segurar ataque com outro dedo, soltar só um deles e conferir independência. Repetir pausa/Resume mantendo dedos antigos apoiados.
+5. No desktop, testar W/A/D e setas: W avança pela proa, A/D giram manualmente e ataques continuam iguais.
+
+**Possíveis perguntas de entrevista:**
+
+- Como converter o joystick em rumo? “Uso atan2(x, -y), porque a tela cresce para baixo e meu navio começa olhando para cima.”
+- Como evitar um giro longo perto de π? “Normalizo a diferença com atan2(sin, cos), obtendo o menor arco com sinal.”
+- Por que não mudar a rotação direto para o alvo? “Isso removeria o movimento naval; limito a alteração por velocidade de giro vezes o tempo simulado.”
+- Apontar para baixo é ré? “Não. O navio continua avançando pela própria proa enquanto vira para aquele rumo.”
+- Como manter o teclado? “Os flags e a fórmula manual permanecem; o rumo automático só participa quando existe intenção direcional de toque.”
+
+**Validação:** 67 testes Chromium passaram: 24 de toque/teclado e 43 regressões de rede, Ranking, persistência e registro. Asserções cobrem oito direções, magnitude parcial/máxima, zona morta, ausência de snap, tolerância, correção sem overshoot, menor giro nos dois sentidos de ±π e 0/2π, multitoque, cancelamento, pausa com dedos antigos e fórmulas exatas de W/A/D. Typecheck e lint passaram; build validado com o aviso existente de chunk acima de 500 kB. A primeira medição à esquerda atingiu a borda normal da arena; ajustamos o ponto inicial do teste, sem modificar a regra de limites. Nenhum commit realizado.
+
+**Limitações:** Não há aceleração/inércia nova, pathfinding ou navegação automática ao redor das ilhas. O navio já começa a avançar enquanto vira, podendo inicialmente seguir parcialmente o rumo anterior; isso preserva o movimento pela proa e a sensação naval. Magnitude controla avanço, não giro. Novo teste físico e Safari ainda dependem de validação manual.
+
+### Etapa 28 — Correção em HTTP LAN e apresentação mobile horizontal
+
+**Status:** Concluído (implementação e regressões; ergonomia/trust no celular ainda exigem teste manual)
+
+**Responsável pela implementação:** Colaborativo — relato e feedback no telefone pelo desenvolvedor; diagnóstico, código e testes pelo Codex.
+
+**O que foi implementado:** UUID v4 seguro também sem `crypto.randomUUID`, preservação do fallback nativo do MSW, comando HTTPS opcional com certificado local confiável, HUD horizontal compacto e joystick sem setas. O algoritmo de rumo em 360° e ataques não foi alterado.
+
+**Arquivos principais envolvidos:** `Game.ts`, `createMatchId.ts`, `App.tsx`, `mocks/browser.ts`, `vite.config.ts`, `package.json`, `.gitignore`, `screens/Game.tsx`, `TouchControls.tsx`, `index.css`, `mobileLan.spec.ts`, `touchControls.spec.ts`, `README.md`.
+
+**Como funciona:** Reproduzimos em `http://192.168.3.2`: `isSecureContext=false`, `crypto.randomUUID` e `navigator.serviceWorker` ausentes. No fim, o jogo marcava finished e depois lançava `crypto.randomUUID is not a function`, sem chegar ao callback de Resultado. Agora o fallback gera 16 bytes com `crypto.getRandomValues` e aplica os bits de versão/variante UUID v4. A navegação local é definida antes de solicitar o registro. Se o MSW não puder iniciar, a mutation falha normalmente e conserva a pendência, sem impedir Resultado. Timer e morte seguem o mesmo fluxo.
+
+**Por que foi feito dessa forma:** São limitações diferentes: a geração de ID pode funcionar corretamente no HTTP LAN; Service Worker precisa de contexto seguro. A inspeção do MSW 3.0.2 mostrou que ele usa Fetch/XHR como fallback quando o worker não está disponível. Testamos `/api/mock-status` nesse HTTP real e recebemos a resposta do handler. Portanto, não bloqueamos o fallback nem atribuímos a ausência de registros a uma falha de MSW não comprovada: o erro de UUID já impedia o envio. Não criamos API mobile nem dados fictícios. `npm run dev -- --host 0.0.0.0` continua válido; para testar o Service Worker real, `npm run dev:mobile` usa HTTPS nativo do Vite na porta 5174, com `.cert/dev.pem` e `.cert/dev-key.pem` gerados por mkcert e CA confiada no telefone. Certificados/chaves ficam ignorados pelo Git. README explica instalação, confiança e variáveis opcionais. Apenas aceitar uma tela de aviso SSL não garante registro do worker.
+
+**O que eu preciso entender:** Contexto seguro, UUID v4 e diferença entre transição local e registro remoto. LocalStorage é isolado por origem/dispositivo: HTTP e HTTPS não compartilham os registros; o mock não é banco central entre PC e celular. Revisar o fallback e configuração TLS, escritos com assistência do Codex. No layout horizontal até 500px de altura, a arena ocupa a altura restante após uma linha de HUD; controles sobrepõem os cantos inferiores, com possível encobrimento temporário de entidades periféricas. Mundo, proporção, input e regras permanecem os mesmos. Labels e estado continuam no HTML semântico; não há novas atualizações por frame.
+
+**Como testar manualmente:** Usar HTTP LAN com `npm run dev -- --host 0.0.0.0`, ou seguir mkcert/CA no README e abrir `https://IP_DO_PC:5174` sem aviso de certificado. Terminar uma partida e conferir Resultado, Registration: Submitted, Ranking e histórico no mesmo navegador. Se houver falha real de startup/envio, Resultado deve aparecer com pendência preservada após refresh. Girar a tela, verificar HUD/arena sem scroll, joystick + ataque simultâneos e pausa com input novo após retomar.
+
+**Validação desta etapa:** 72 testes Chromium aprovados, incluindo HTTP LAN real, UUID fallback, conclusão por tempo/morte, registros nas duas abas, falha forçada no startup da interceptação, pendência após refresh, origem das URLs e layout horizontal em 844×390, 667×375 e 568×320. Preservadas as regressões de touch, teclado, pausa, submissão, persistência, paginação e cenários de rede. Typecheck, lint e build aprovados; permanece o aviso de bundle principal acima de 500 kB. Também exercitamos HTTPS LAN: contexto seguro, controller em `/mockServiceWorker.js`, envio confirmado e consultas sem exceções. Esse navegador automatizado usou exceção TLS com certificado temporário, removido ao final; isso não comprova confiança ou ergonomia no telefone físico, que ainda serão testadas pelo desenvolvedor.
+
+**Possíveis perguntas de entrevista:**
+- Por que funcionava no localhost e falhava no IP? “O navegador trata localhost como confiável, mas HTTP em IP de rede não. Faltava randomUUID e o callback de conclusão quebrava. O MSW instalado consegue operar com fallback mesmo sem Service Worker.”
+- Como a falha da API afeta Resultado? “Não controla a navegação. O jogo entrega o resultado local, React abre a tela e o envio pode ficar pendente para retry.”
+- Por que não compartilhar os registros do PC com o celular? “O MSW e a persistência são locais ao navegador/origem. Usamos os mesmos contratos e handlers, mas não um servidor de banco compartilhado.”
+- Como aumentamos a arena? “Compactamos o HUD e retiramos as faixas laterais reservadas. CSS escala a apresentação, preservando o mundo lógico e a simulação.”
+
+### Etapa 29 — Controles fora da arena e clareza das fixtures
+
+**Status:** Concluído (implementação; teste final de conforto no telefone pendente)
+
+**Responsável pela implementação:** Colaborativo — feedback físico pelo desenvolvedor, ajustes e testes pelo Codex.
+
+**O que foi implementado:** Em landscape coarse-pointer, até 500px de altura e a partir de 700px de largura, um grid mantém joystick à esquerda, arena central e três ataques empilhados à direita. São regiões vizinhas, sem sobreposição. A largura total acompanha a altura disponível e inclui apenas controles/gaps necessários; em telas menores e retrato, controles ficam abaixo. HUD compacto, safe areas, `100dvh`, proporção e mundo lógico foram preservados. Uma região própria do canvas permite calcular seu tamanho sem contar o espaço dos controles. Não alteramos input, simulação ou ataques.
+
+**Arquivos principais envolvidos:** `screens/Game.tsx`, `index.css`, `screens/Ranking.tsx`, `screens/MatchHistory.tsx`, `touchControls.spec.ts`, `mobileLan.spec.ts`, `fixtureSemantics.spec.ts`, `README.md`.
+
+**Como funciona:** Inspecionamos fixtures, handlers, estado confirmado e cenários. Success já contém três partidas de Captain (`local-player`) e oito partidas de competidores com nomes de piratas. Ranking combina fixtures e confirmados apenas com a mesma configuração completa. History filtra pelo playerId solicitado; a UI solicita somente o jogador local. Suas três partidas de exemplo são desse jogador, não históricos de terceiros. Preservamos essa base, os IDs e a lógica de filtragem. Removemos a exibição do playerId técnico: Ranking usa playerName e marca o jogador local como “You”; detalhes do histórico mostram o nome.
+
+**Por que foi feito dessa forma:** As instruções originais pedem concorrentes representados por fixtures e histórico do jogador. Amostras do próprio jogador são compatíveis com essa regra, enquanto partidas de concorrentes não podem aparecer em seu histórico. Não há motivo para remover fixtures legítimas ou criar um estado mobile diferente. Multiple pages adiciona 15 partidas temporárias do jogador local somente à resposta; voltar a Success elimina esse acréscimo. Reset restaura Success/all, mantém as fixtures básicas e remove confirmados/pendentes; não apaga Options nem o último Resultado.
+
+**O que eu preciso entender:** Uma origem nova tem seu próprio localStorage; configurações, cenário persistido e partidas confirmadas podem diferir do PC. Ranking depende da configuração completa, enquanto History depende da identidade. Default sem confirmados produz 11 entradas no Ranking e 3 no histórico; uma configuração personalizada pode excluir todas as fixtures do Ranking. Revisar CSS Grid, container units (`cqh`), `display: contents` e a distinção entre identidade interna estável e nome apresentado. A solução CSS e os testes foram escritos com assistência do Codex.
+
+**Como testar manualmente:** Em aproximadamente 1038×487, observar joystick imediatamente à esquerda e ataques à direita sem cobrir a arena. Conferir também landscape estreito e portrait com controles abaixo. Mover e atacar simultaneamente, pausar e retomar com input novo. Usar Reset e conferir Active: Success · Target: all. Terminar partida e verificar Registration: Submitted; consultar histórico e Ranking com configuração compatível. Nomes devem aparecer sem `fixture-player-*`.
+
+**Validação desta etapa:** 75 testes Chromium aprovados na suíte relevante, além de nova execução dos dois testes de fixtures após retirar também o matchId técnico dos detalhes visuais (IDs continuam nos contratos/API). Layout sem sobreposição verificado em 1038×487, 844×390 e 740×360; fallback abaixo em 667×375 e 568×320. Novo teste exercita movimento e disparo com dois ponteiros nas regiões laterais. Testes de HTTP LAN comparam o registro confirmado pelo ID exato nas respostas History/Ranking e verificam exclusão por configuração incompatível. Base Success, filtro por jogador, nomes apresentados, Reset persistido e ausência das fixtures temporárias foram verificados. Typecheck, lint e build aprovados; permanece o aviso de bundle acima de 500 kB. A ergonomia final depende do próximo teste físico.
+
+**Possíveis perguntas de entrevista:**
+- Por que há partidas antes de jogar? “O mock tem uma base de exemplo: concorrentes no Ranking e partidas de amostra do próprio jogador no histórico.”
+- Como evitamos misturar históricos? “O endpoint filtra por playerId antes de ordenar e paginar; a interface envia a identidade local.”
+- Por que a mesma partida pode aparecer no histórico mas não no Ranking atual? “O histórico é do jogador, mas o Ranking compara apenas partidas com a configuração completa selecionada.”
+- Como evitamos controles sobre a arena? “Cada região ocupa uma coluna do grid. Em telas estreitas usamos uma linha separada abaixo, sem mudar o mundo do jogo.”
+
+### Etapa 30 — Centralização do joystick e Reset sem dados antigos no cache
+
+**Status:** Concluído (implementação; verificação física final ainda pendente)
+
+**Responsável pela implementação:** Colaborativo — confirmação dos valores de Options pelo desenvolvedor; investigação, código e regressões pelo Codex.
+
+**O que foi implementado:** O grupo do joystick agora usa alinhamento central na coluna ao lado da arena, sem considerar a altura do HUD. Mantivemos três regiões, ataques externos, fallback e todos os comportamentos de input. Reset cancela consultas, limpa confirmados/pendentes, restaura Success/all e counters, remove páginas de Ranking/History do cache e reinicializa o status de registro. A mensagem de sucesso só aparece se as persistências necessárias funcionarem; a interface explica que amostras básicas permanecem.
+
+**Arquivos principais envolvidos:** `index.css`, `NetworkScenarioControls.tsx`, `touchControls.spec.ts`, `networkReset.spec.ts`, `README.md`.
+
+**Como funciona:** Antes do ajuste, um teste criou uma partida real com pontuação 47, aqueceu as queries e pressionou Reset. O armazenamento e os endpoints já não continham aquele ID, mas os caches inativos ainda guardavam suas linhas. `invalidateQueries` marcava os dados antigos como stale e não removia a resposta; eles podiam reaparecer ao navegar, até um refetch bem-sucedido, e continuar visíveis se a consulta falhasse. Agora removemos essas queries por prefixo depois de cancelar solicitações, mantendo as chaves e handlers existentes. Ranking/History não estão montados nos locais que oferecem Reset (Menu/Result); a próxima navegação consulta o mock limpo. O último Resultado local continua armazenado, mas seu status de registro é reinicializado.
+
+**Por que foi feito dessa forma:** Invalidar é adequado para atualização normal; apagar registros em Reset exige também descartar suas representações antigas no cache. Não criamos estado remoto paralelo, API mobile ou filtragem visual para esconder registros. Reset preserva Options, então não garante os mesmos competidores se a configuração for diferente.
+
+**O que eu preciso entender:** A diferença de fixtures foi confirmada pelo desenvolvedor: telefone em 120s/3s, PC em 60s/3s. As fixtures usam 120s/3s. Ao mudar o PC para 120s, os competidores reapareceram. Essa filtragem está correta; origem separada permite Options/cenário/confirmados diferentes. Com configuração padrão, Success/all e estado limpo, localhost e HTTP LAN retornam exatamente a mesma base: 11 partidas no Ranking e 3 amostras locais no History. Em 60s/3s, Ranking fica vazio após Reset, mas History conserva as 3 amostras do jogador. Revisar cancelamento, remoção vs invalidação de queries e `resetQueries`; este ajuste foi escrito com assistência do Codex.
+
+**Como testar manualmente:** No landscape, verificar que o centro do grupo do joystick coincide com o centro vertical da arena. Jogar e confirmar uma partida, abrir Ranking e History para aquecer cache, voltar ao Menu e pressionar Reset. Conferir Success/all e que a partida real sumiu das duas telas; amostras continuam. Options e último Resultado permanecem. Após Reset, uma falha de consulta deve mostrar erro sem recuperar linhas reais já apagadas.
+
+**Validação desta etapa:** 78 testes Chromium aprovados na suíte relevante. Os três novos testes cobrem Reset com cache aquecido em desktop e HTTP LAN, persistências preservadas, remoção do ID real dos endpoints/cache/UI, consulta 500 após Reset sem reaparecimento das linhas e base idêntica em localhost/LAN com configuração padrão. O teste de layout mede a diferença entre os centros do grupo do joystick e do canvas (até 2px) em três tamanhos landscape. No viewport 1038×487, ambos os centros ficaram em y=268px. Typecheck, lint e build aprovados; permanece o aviso de bundle acima de 500 kB. Não houve commit nem teste físico executado pelo Codex.
+
+**Possíveis perguntas de entrevista:**
+- Por que só invalidar não resolveu o Reset? “Query inativa guarda a resposta antiga até um refetch bem-sucedido. Para apagar o demo, também precisamos remover essas páginas do cache.”
+- Por que cancelar antes de limpar? “Para evitar que uma resposta iniciada antes do Reset tente restaurar dados antigos no cache.”
+- Reset precisa apagar Options? “Não. Ele restaura o mock e suas pendências; as configurações do jogador e o último resultado local são preservados.”
+- A diferença PC/celular era bug? “A diferença de competidores vinha de 60s versus 120s e era correta. Separadamente, encontramos e corrigimos a retenção de partidas apagadas no cache do Reset.”
+
 ## 5. Conceitos importantes para estudar
+
+- **Contexto seguro e Service Worker:** HTTPS confiável ou localhost permite recursos que HTTP em IP LAN não oferece. HTTPS com certificado inválido ainda exige resolver a confiança no dispositivo.
+- **UUID v4:** ID aleatório com bits de versão/variante; `getRandomValues` permite manter a identificação também quando `randomUUID` não está disponível. Revisar o pequeno fallback criado pelo Codex.
+- **Origem do navegador:** protocolo, host e porta definem a origem; cada combinação possui seu armazenamento. Mesma arquitetura não significa banco compartilhado entre dispositivos.
 
 - **useSyncExternalStore:** conecta um pequeno estado local externo ao React por snapshot estável e assinatura com cleanup. Aqui observa conclusões pendentes, não gameplay contínuo.
 - **Resultado incerto:** timeout ou perda de resposta não prova que o servidor deixou de gravar. Persistir e reenviar pelo mesmo ID permite descobrir a confirmação.
@@ -1507,6 +1681,10 @@ Cenários disponíveis: sucesso; listas vazias; múltiplas páginas; lentidão; 
 - **O que os testes automatizados garantem hoje?** “A abertura do menu e alguns caminhos de navegação. Não garantem que o jogo seja jogável.”
 
 ## 7. Pontos que ainda não domino
+
+- **Rumo analógico implementado pelo Codex em colaboração:** revisar atan2(x, -y), diferença angular normalizada, limitação por delta, tolerância de alinhamento, magnitude e prioridade do teclado híbrido. Conferir a curva no aparelho real.
+
+- **Touch controls implementados pelo Codex em colaboração:** revisar pointer capture/IDs, snapshot combinado por fontes, dead zone, feedback DOM sem renders contínuos, descarte ao pausar e container sizing. Fazer teste em aparelho real antes da entrevista.
 
 - **Cenários MSW implementados pelo Codex em colaboração:** revisar captura por requisição, sequência de latências, cancelamento Axios, timeout após aceitação, reset destrutivo e limites entre abas/storage. Não assumir que cancelar desfaz dados persistidos.
 

@@ -6,6 +6,7 @@ import { Game } from '@/game/core/Game';
 import type { GameHudSnapshot } from '@/game/core/GameHudSnapshot';
 import { GameRenderer } from '@/game/rendering/GameRenderer';
 import type { CompletedMatch } from '@/types/completedMatch';
+import type { InputSnapshot } from '@/game/input/InputManager';
 
 interface GameCanvasProps {
   config?: GameConfig;
@@ -18,6 +19,8 @@ type CanvasStatus = 'loading' | 'ready' | 'error';
 export interface GameCanvasControls {
   pause: () => void;
   resume: () => void;
+  setPointerInput: (pointerId: number, intentions: Partial<InputSnapshot>) => void;
+  releasePointer: (pointerId: number) => void;
 }
 
 export const GameCanvas = forwardRef<GameCanvasControls, GameCanvasProps>(function GameCanvas(
@@ -32,6 +35,8 @@ export const GameCanvas = forwardRef<GameCanvasControls, GameCanvasProps>(functi
   useImperativeHandle(ref, () => ({
     pause: () => gameRef.current?.pause(),
     resume: () => gameRef.current?.resume(),
+    setPointerInput: (pointerId, intentions) => gameRef.current?.setPointerInput(pointerId, intentions),
+    releasePointer: (pointerId) => gameRef.current?.releasePointer(pointerId),
   }), []);
 
   useEffect(() => {
@@ -134,7 +139,7 @@ export const GameCanvas = forwardRef<GameCanvasControls, GameCanvasProps>(functi
       ref={containerRef}
       style={{
         position: 'relative',
-        width: `min(100%, ${config.arenaWidth}px, calc((100svh - 220px) * ${config.arenaWidth / config.arenaHeight}))`,
+        width: `min(100%, ${config.arenaWidth}px, calc(100cqh * ${config.arenaWidth / config.arenaHeight}))`,
         aspectRatio: `${config.arenaWidth} / ${config.arenaHeight}`,
         border: '2px solid #334155',
         borderRadius: 12,

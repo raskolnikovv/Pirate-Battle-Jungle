@@ -19,6 +19,8 @@ async function checkInterception(): Promise<boolean> {
 
 async function activateInterception(): Promise<void> {
   if (worker.readyState === 0) {
+    // MSW selects its built-in Fetch/XHR fallback when Service Workers are absent
+    // (for example on HTTP LAN). Keep the same handlers and readiness probe.
     await worker.start({ onUnhandledFrame: 'bypass' });
   }
   if (await checkInterception()) return;

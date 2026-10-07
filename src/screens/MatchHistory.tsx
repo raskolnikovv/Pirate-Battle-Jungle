@@ -129,8 +129,7 @@ export function MatchHistory({ onNavigate }: MatchHistoryProps) {
                     <td style={{ padding: '12px 16px' }}>
                       <details>
                         <summary>Match details</summary>
-                        <p>Player: {entry.playerName} ({entry.playerId})</p>
-                        <p>Match: {entry.matchId}</p>
+                        <p>Player: {entry.playerName}</p>
                         <p>Session: {entry.config.sessionDuration}s · Spawn: {entry.config.enemySpawnInterval}s</p>
                       </details>
                     </td>

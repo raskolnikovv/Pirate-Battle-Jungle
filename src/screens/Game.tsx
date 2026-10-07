@@ -1,33 +1,27 @@
-import { useRef, useState, type CSSProperties } from "react";
+import { useCallback, useRef, useState } from "react";
 import { formatRemainingTime, type GameHudSnapshot } from "@/game/core/GameHudSnapshot";
 import { GameCanvas, type GameCanvasControls } from "@/components/GameCanvas";
 import { PauseDialog } from "@/components/PauseDialog";
-import { NavButton } from "@/components/NavButton";
 import type { GameResultPayload, ScreenName } from "@/app/navigationTypes";
 import { HUD_ASSET_MANIFEST } from "@/game/assets/hudAssets";
 import { DEFAULT_GAME_CONFIG } from "@/config/gameConfig";
 import { loadGameOptions } from "@/config/gameOptions";
+import { TouchControls } from '@/components/TouchControls';
+import type { InputSnapshot } from '@/game/input/InputManager';
 
 interface GameProps {
   onNavigate: (screen: ScreenName, payload?: GameResultPayload) => void;
 }
-
-const headerStyle: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  flexWrap: "wrap",
-  gap: 12,
-  padding: "12px 24px",
-  backgroundColor: "#1e293b",
-  borderBottom: "1px solid #334155",
-};
 
 export function Game({ onNavigate }: GameProps) {
   // A fresh screen mount means a new match; never reread storage during gameplay.
   const [matchConfig] = useState(() => ({ ...DEFAULT_GAME_CONFIG, ...loadGameOptions() }));
   const [hud, setHud] = useState<GameHudSnapshot | null>(null);
   const gameControlsRef = useRef<GameCanvasControls>(null);
+  const handlePointerInput = useCallback((id: number, intentions: Partial<InputSnapshot>) => {
+    gameControlsRef.current?.setPointerInput(id, intentions);
+  }, []);
+  const handlePointerRelease = useCallback((id: number) => gameControlsRef.current?.releasePointer(id), []);
   const matchLabel = !hud ? "Loading" : hud.status === "running" ? "Playing"
     : hud.status === "paused" ? "Paused"
     : hud.finishReason === "defeated" ? "Ship Destroyed" : "Time Expired";
@@ -43,16 +37,8 @@ export function Game({ onNavigate }: GameProps) {
   };
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        backgroundColor: "#0f172a",
-        color: "#f8fafc",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <header style={headerStyle}>
+    <div className="game-screen">
+      <header className="game-header">
         <section aria-label="Match information">
           <dl className="match-hud">
             {stats.map(({ label, icon, value }) => (
@@ -73,26 +59,21 @@ export function Game({ onNavigate }: GameProps) {
             </div>
           </dl>
         </section>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+        <div className="game-header-actions">
           <button className="pause-action" disabled={hud?.status !== "running"}
             onClick={() => gameControlsRef.current?.pause()}>Pause</button>
-          <NavButton onClick={handleQuit} variant="secondary">
-            Quit Match
-          </NavButton>
+          <button className="pause-action" onClick={handleQuit}>Quit Match</button>
         </div>
       </header>
 
-      <main
-        style={{
-          flex: 1,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 16,
-        }}
-      >
-        <GameCanvas config={matchConfig} ref={gameControlsRef} onHudChange={setHud}
-          onMatchComplete={(result) => onNavigate("result", result)} />
+      <main className="game-arena-space">
+        <div className="game-playfield">
+          <div className="game-canvas-space">
+            <GameCanvas config={matchConfig} ref={gameControlsRef} onHudChange={setHud}
+              onMatchComplete={(result) => onNavigate("result", result)} />
+          </div>
+          {hud?.status === 'running' && <TouchControls onInput={handlePointerInput} onRelease={handlePointerRelease} />}
+        </div>
       </main>
       <section className="match-controls" aria-labelledby="keyboard-controls-title">
         <h2 id="keyboard-controls-title">Keyboard controls</h2>

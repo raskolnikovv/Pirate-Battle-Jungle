@@ -1,7 +1,7 @@
 import { DEFAULT_GAME_CONFIG, SESSION_DURATION_LIMITS, type GameConfig } from '@/config/gameConfig';
 import { createPlayer } from '../entities/Player';
 import { createIsland } from '../entities/Island';
-import { InputManager } from '../input/InputManager';
+import { InputManager, type InputSnapshot } from '../input/InputManager';
 import { GameRenderer } from '../rendering/GameRenderer';
 import { MovementSystem } from '../systems/MovementSystem';
 import { CollisionSystem } from '../systems/CollisionSystem';
@@ -11,6 +11,7 @@ import { GameLoop } from './GameLoop';
 import type { GameFinishReason, GameState } from './GameState';
 import { createHudSnapshot, type GameHudSnapshot } from './GameHudSnapshot';
 import type { CompletedMatch } from '@/types/completedMatch';
+import { createMatchId } from './createMatchId';
 
 const PLAYER_ID = 'player';
 
@@ -57,6 +58,12 @@ export class Game {
   getState(): GameState | null {
     return this.state;
   }
+
+  setPointerInput(pointerId: number, intentions: Partial<InputSnapshot>): void {
+    if (this.state?.status === 'running') this.input.setPointerInput(pointerId, intentions);
+  }
+
+  releasePointer(pointerId: number): void { this.input.releasePointer(pointerId); }
 
   start(config: GameConfig = DEFAULT_GAME_CONFIG): void {
     if (this.state?.status === 'paused'
@@ -223,7 +230,7 @@ export class Game {
         if (typeof value === 'object') Object.freeze(value);
       }
       this.onMatchComplete?.(Object.freeze({
-        matchId: crypto.randomUUID(),
+        matchId: createMatchId(),
         completedAt: new Date().toISOString(),
         score: this.state.score,
         enemiesDefeated: this.state.enemiesDefeated,

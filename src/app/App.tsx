@@ -20,11 +20,12 @@ export function App() {
     if (next === 'result' && payload) {
       setLastResult(payload);
       setResultStorageError(!saveLastCompletedMatch(payload));
-      submission.mutate(toSubmitMatchRequest(payload));
     }
     // Only Result is restored on reload; an active match is never resumed from storage.
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${next === 'result' ? '#result' : ''}`);
     setScreen(next);
+    // Local completion determines navigation. Registration may fail or remain pending.
+    if (next === 'result' && payload) submission.mutate(toSubmitMatchRequest(payload));
   };
 
   switch (screen) {

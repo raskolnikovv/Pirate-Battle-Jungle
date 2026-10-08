@@ -1,6 +1,6 @@
 # Architecture — Pirate Battle
 
-This describes the current implementation. [INSTRUCOES.md](INSTRUCOES.md) defines requirements; [README.md](README.md) contains setup and evaluator instructions.
+This describes the current implementation for the Jungle Gaming coding challenge. [README.md](README.md) contains setup and evaluator instructions.
 
 ## 1. Responsibilities and flow
 

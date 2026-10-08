@@ -88,7 +88,7 @@ This recorded run used SwiftShader software rendering, as verified in environmen
 
 ## Files involved
 
-Modified: .gitignore, package.json, README.md, DEV_NOTES_PTBR.md, src/audio/AudioManager.ts, src/components/GameCanvas.tsx, src/game/core/Game.ts, src/game/core/GameLoop.ts.
+Modified: .gitignore, package.json, README.md, src/audio/AudioManager.ts, src/components/GameCanvas.tsx, src/game/core/Game.ts, src/game/core/GameLoop.ts.
 Created: .env.profiling, playwright.profile.config.ts, src/game/profiling/profileSession.ts, profiling/production.spec.ts, profiling/run.mjs, profiling/report.mjs, PERFORMANCE_REPORT.md, profiling-results/session.json, profiling-results/cycles.json, profiling-results/validation.json, profiling-results/checks.json, profiling-results/default-spawn-early-ending.json, profiling-results/orbit-early-ending.json.
 Generated HTML/traces and archived attempts are ignored by Git. Existing focus styling in src/index.css was preserved; it predates this task. No gameplay balance, API contracts, Master Checklist, commits or pushes changed.
 

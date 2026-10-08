@@ -133,7 +133,7 @@ npx playwright show-report
 
 The normal suite owns a development server on `127.0.0.1:5175`, uses Chromium with two local workers (one in CI), and retains failure traces. Browser contexts isolate tests. Deterministic boundary tests control simulation time while exercising real systems/inputs; they are not performance measurements.
 
-Versioned visual baselines under `tests/*.spec.ts-snapshots/` include desktop, mobile portrait and landscape. Review intended appearance changes before updating them. The latest recorded full run passed **164 tests**, followed by **42 successful stability executions** of previously failing cases; journal stage 47 records that run. Generated HTML/failure traces are ignored by Git and must be delivered separately.
+Versioned visual baselines under `tests/*.spec.ts-snapshots/` include desktop, mobile portrait and landscape. Review intended appearance changes before updating them. The latest recorded full run passed **164 tests**, followed by **42 successful stability executions** of previously failing cases. These are recorded results from the preceding regression validation, not a new run for this documentation change. Generated HTML/failure traces are ignored by Git and must be delivered separately.
 
 ### Production profiling
 
@@ -173,7 +173,11 @@ Required-GPU mode rejects software fallback. Custom output directories receive J
 | `tests`, `profiling`, `profiling-results` | Regression tests, production harness and recorded JSON evidence. |
 | `public/assets` | Supplied Jungle artwork/sounds and supplemental menu artwork. |
 
-Read [ARCHITECTURE.md](ARCHITECTURE.md). [DEV_NOTES_PTBR.md](DEV_NOTES_PTBR.md) is a private chronological study journal with AI attribution; older entries describe their original stage, not the current feature set.
+Read [ARCHITECTURE.md](ARCHITECTURE.md) for the technical design.
+
+### Development approach
+
+Development proceeded in incremental milestones. The project owner provided step-by-step requirements, reviewed each stage and supplied feedback from manual desktop and physical-phone testing. Implementation and technical documentation used AI assistance; this does not imply that every part was written manually.
 
 ## Known limitations
 

@@ -4,6 +4,8 @@
 
 ## 1. Visão geral do projeto
 
+**Atualização da etapa 35:** feedback de combate agora usa chamas, impactos, explosões e três estágios oficiais de vela conforme HP. Todos os efeitos ficam no Pixi, congelam na pausa e são limpos ao sair. A suíte atual tem 114 testes aprovados; inspeção física da legibilidade continua necessária. Sons não foram adicionados.
+
 **Atualização da etapa 27:** após feedback físico, o joystick agora aponta rumo desejado em 360° com avanço analógico e giro gradual pelo menor arco. Teclado e ataques mantêm suas regras. Cenários de rede configuráveis e touch gameplay da etapa 26 já estão implementados; notas anteriores abaixo registram o estado de suas respectivas etapas.
 
 **Atualização da etapa 24:** conclusões agora entram em uma coleção local de pendências antes do POST. Falhas sobrevivem ao refresh e permitem retry explícito no Result/menu, com várias partidas independentes. Confirmação remove a pendência; reenvio recupera o mesmo registro pelo matchId. Cenários configuráveis completos e sincronização entre abas seguem futuros.
@@ -19,6 +21,8 @@ Já existem telas de menu, opções, jogo, resultado, ranking e histórico; nave
 A fatia jogável mostra água oficial, ilha e navio controlado por W/↑, A/← e D/→. Space dispara pela proa; Q/E lançam três balas paralelas. Chaser e Shooter surgem periodicamente com seed e posições validadas. A partida usa countdown da simulação, padrão 120 s; ao expirar, congela o gameplay e mantém a arena visível. Pontuação autoritativa soma 1 por inimigo eliminado por projétil do jogador; autodestruição não pontua. HP zero encerra por defeated e congela o gameplay. HUD React usa painéis/ícones oficiais e lista semântica para pontos, HP, tempo MM:SS e status reais por snapshots; comandos aparecem em legenda com teclas identificadas; Pixi mostra barras oficiais acima de todos os navios. Pausa manual e automática por blur/aba oculta congela a simulação e exige Resume explícito. Options salva duração 60–180 s e intervalo de spawn 1–15 s localmente; novas partidas usam valores salvos. Término normal navega para Result com dados reais e persiste a última conclusão; abandono retorna ao menu sem substituir resultado. Conclusões agora são enviadas por mutation/Axios ao MSW e aparecem no histórico confirmado da sessão. Sons, ranking completo e robustez/persistência da API continuam pendentes.
 
 ## 2. Como a arquitetura funciona
+
+**Feedback de combate:** CombatSystem comunica eventos visuais ao GameRenderer por callback. Game também comunica o primeiro ponto de colisão de projéteis e avança o tempo do CombatEffects somente nos subpassos ativos. O renderer possui os sprites/flash temporários; React e a API não recebem esses efeitos. A aparência dos navios depende de HP/maxHealth, sem alterar entidades ou colliders.
 
 **Pendências:** `pendingMatchesStorage` mantém os payloads locais aguardando confirmação; `useSyncExternalStore` publica somente alterações da coleção/erro de armazenamento para as telas. `useSubmitMatch` continua sendo o caminho único de mutation → Axios → MSW, tanto na conclusão quanto no retry. Registro confirmado permanece na coleção do servidor simulado; a lista local de pendências não alimenta ranking/histórico diretamente.
 
@@ -1627,7 +1631,44 @@ O avanço usa `playerMovementSpeed × magnitude × deltaSeconds` pela proa atual
 - Por que o botão Main Menu não envia resultado? “Ele usa o fluxo de abandono; apenas o encerramento normal da simulação gera uma partida concluída.”
 - Como aumentar a arena sem mudar o gameplay? “Alterei o limite de exibição em CSS, mantendo proporção, coordenadas e tamanho lógico da simulação.”
 
+### Etapa 35 — Feedback visual de combate com assets oficiais
+
+**Status:** Concluído — checks e suíte automatizada passaram; inspeção física final permanece necessária.
+
+**Responsável pela implementação:** Codex; inspeção visual e teste físico final pelo desenvolvedor.
+
+**O que foi implementado:** Chamas breves nos disparos frontal, laterais e do Shooter; pequenos impactos em navios/ilhas; explosões animadas na destruição de Chaser/Shooter e no contato suicida do Chaser. Dano recente aplica um flash quente temporário, e o HP seleciona versões oficiais com velas rasgadas. Regras de dano, cooldown, score, colisões, IA e balanceamento permanecem iguais. Não foram adicionados sons.
+
+**Arquivos principais envolvidos:** `gameAssets.ts`, `Game.ts`, `CombatSystem.ts`, `GameRenderer.ts`, novo `CombatEffects.ts` e `combatFeedback.spec.ts`.
+
+**Como funciona:** CombatSystem emite eventos de apresentação somente quando realmente dispara, aplica dano ou destrói um inimigo. Game encaminha ao renderer e informa o ponto do primeiro impacto de cada bala pelo segmento de colisão. Essa notificação preserva eventos que poderiam desaparecer entre dois frames, como um inimigo removido no mesmo update em que recebeu o golpe fatal. Não envia coordenadas/efeitos ao React e não altera GameState ou os contratos da API.
+
+CombatEffects mantém sprites temporários e tempos de flash, usando as texturas carregadas antes da partida. Game avança esses tempos pelos mesmos subpassos ativos da simulação; durante pausa/encerramento não avançam. Não há ticker extra nem timers por efeito. O desenho apenas apresenta o estado visual atual. Disparos duram 0,16s, impactos/flash 0,18s e explosões 0,5s. Sprites expirados são destruídos sem destruir texturas compartilhadas; start/destroy limpam efeitos e a desmontagem libera a camada e as texturas pela rotina existente.
+
+**Assets inspecionados:** O XML oficial informa `fire_1` 18×39 e `fire_2` 11×27; `explosion_1` 74×75, `explosion_2` 60×59 e `explosion_3` 42×41. São PNGs separados: a animação usa pequeno → médio → grande → médio → pequeno, com transparência progressiva e proporções naturais. Impactos usam escala uniforme menor. As três famílias de navios têm 66×113 pixels: jogador `1→7→13`, Chaser `2→8→14`, Shooter `3→9→15`. Até 2/3 de HP usam a vela danificada; até 1/3 usam a mais rasgada. Anchor, tamanho, rotação e collider não mudam com a textura.
+
+**Por que foi feito dessa forma:** Eventos descrevem o resultado do combate sem transferir regras para Pixi. Trocar somente a textura reutiliza o sprite e mantém a identidade visual de cada navio. Constantes em COMBAT_VISUALS são exclusivamente de apresentação; não entram no GameConfig, evitando alterar snapshots, comparação do Ranking ou registros persistidos por causa de uma mudança cosmética. Cada efeito cria um sprite somente ao ocorrer e usa um array pequeno de efeitos ativos; não foi criado um pool ou sistema de partículas complexo sem evidência de necessidade.
+
+**O que eu preciso entender:** Trabalho implementado pelo Codex. Revisar callbacks tipados, diferença entre evento de combate e estado contínuo, animação por tempo, anchor de chama versus navio, troca de textura, tint temporário, propriedade das texturas e ordem de destruição. Entender por que um efeito de destruição não concede pontos nem mantém o inimigo vivo.
+
+**Como testar manualmente:** Usar Space/Q/E, inclusive girando/avançando, e conferir as chamas nos canhões; observar o Shooter disparando. Acertar navios até o dano alterar as velas e destruir ambos os tipos; verificar +1 por morte causada pelo jogador. Deixar um Chaser atingir o jogador: impacto/explosão e HP reduzido, sem pontos. Atirar contra a ilha. Pausar durante um efeito, aguardar e retomar: animação deve continuar do mesmo ponto. Sair/reiniciar durante disparos: não pode sobrar efeito nem flash. Conferir legibilidade em telefone nas duas orientações.
+
+**Testes/checks:** Typecheck, lint e build passaram. Suíte completa: 114 testes Chromium passaram em 2,1 minutos, incluindo 16 novos testes de feedback. Testes determinísticos de combate acionam controles reais e avançam updates fixos. Cobrem canhões, cooldown, danos, mortes de ambos os tipos, pontuação única, contato sem pontos, impactos na ilha, fases da animação, thresholds das três famílias, pausa, expiração, texturas compartilhadas, cleanup, Result/Play Again e falha/retry de uma textura. Fixtures e inspeção de instâncias ficam somente nos testes; a falha do PNG é injetada pelo MSW, pois requests do Service Worker não passam por page.route. O teste da explosão observa vários passos em vez de assumir o instante do impacto, que difere entre Chaser móvel e Shooter parado. Prévia do canvas inspecionada. Permanecem avisos existentes de bundle maior que 500kB (principal 1.035,18kB) e NO_COLOR/FORCE_COLOR. O primeiro runner não iniciou Chromium no sandbox (EPERM); a execução permitida fora dele passou.
+
+**Limitações:** A navegação existente para Result continua imediata: efeitos ativos são descartados ao encerrar, inclusive uma explosão disparada no contato fatal. Não atrasamos Game Over para terminar uma animação. Flashes ficam na posição do disparo e são breves; não há debris, fumaça, áudio ou iluminação. Os testes não substituem avaliação física de contraste/tamanho das chamas no telefone nem profiling de memória/FPS. O Master Checklist enviado no chat foi lido como referência e não alterado.
+
+**Possíveis perguntas de entrevista:**
+
+- Como uma explosão aparece depois de remover o inimigo? “O combate comunica posição e tipo do evento antes da remoção. Pixi mantém um sprite temporário independente do inimigo.”
+- Por que os efeitos também congelam na pausa? “O tempo deles só avança nos updates ativos; renderizar não modifica o relógio.”
+- A vela rasgada muda a colisão? “Não. Troco a textura por outra do mesmo tamanho; o collider e a simulação continuam iguais.”
+- Por que não destruir a textura junto com a chama? “Outros sprites compartilham essa textura. Destruo a view ao expirar e libero os assets ao desmontar a partida.”
+
 ## 5. Conceitos importantes para estudar
+
+- **Evento visual de combate:** notificação pontual que preserva tiros/impactos/mortes entre frames; apresentação não decide dano ou pontuação.
+- **Troca de textura e tint:** o mesmo sprite pode exibir uma vela rasgada e um flash temporário sem recriar a entidade ou mudar a colisão.
+- **Tempo visual controlado:** efeitos usam deltas da partida para congelar na pausa; um frame de desenho não equivale a um passo de animação.
 
 - **Contexto seguro e Service Worker:** HTTPS confiável ou localhost permite recursos que HTTP em IP LAN não oferece. HTTPS com certificado inválido ainda exige resolver a confiança no dispositivo.
 - **UUID v4:** ID aleatório com bits de versão/variante; `getRandomValues` permite manter a identificação também quando `randomUUID` não está disponível. Revisar o pequeno fallback criado pelo Codex.
@@ -1782,6 +1823,8 @@ O avanço usa `playerMovementSpeed × magnitude × deltaSeconds` pela proa atual
 - **O que os testes automatizados garantem hoje?** “A abertura do menu e alguns caminhos de navegação. Não garantem que o jogo seja jogável.”
 
 ## 7. Pontos que ainda não domino
+
+- **Feedback visual implementado pelo Codex:** estudar eventos pontuais versus snapshots, progressão por delta, frame de impacto variável, anchor das chamas, texturas compartilhadas, tint e cleanup dos sprites. Conferir a legibilidade das velas rasgadas e dos impactos no telefone, sem confundir animação com regra de dano.
 
 - **Rumo analógico implementado pelo Codex em colaboração:** revisar atan2(x, -y), diferença angular normalizada, limitação por delta, tolerância de alinhamento, magnitude e prioridade do teclado híbrido. Conferir a curva no aparelho real.
 

@@ -93,38 +93,50 @@ for (const mobile of [false, true]) {
       }
     });
 
-    test('real player shots show damage, torn sails and one animated destruction without duplicate score', async ({ page }) => {
-      await start(page);
-      await page.evaluate(async () => {
-        const game = Reflect.get(window, 'feedbackGame');
-        const player = game.getState().players.values().next().value;
-        player.x = 300; player.y = 500;
-        const path = '/src/game/entities/Chaser.ts';
-        const { createChaser } = await import(path);
-        game.getState().enemies.set('target', createChaser('target', 300, 340, Reflect.get(game, 'configSnapshot').chaser));
+    for (const enemyType of ['chaser', 'shooter'] as const) {
+      test(`real player shots damage and destroy ${enemyType} with torn sails, one explosion and one point`, async ({ page }) => {
+        await start(page);
+        await page.evaluate(async enemyType => {
+          const game = Reflect.get(window, 'feedbackGame');
+          const player = game.getState().players.values().next().value;
+          player.x = 300; player.y = 500;
+          const path = enemyType === 'chaser' ? '/src/game/entities/Chaser.ts' : '/src/game/entities/Shooter.ts';
+          const module = await import(path);
+          const createEnemy = enemyType === 'chaser' ? module.createChaser : module.createShooter;
+          game.getState().enemies.set('target', createEnemy('target', 300, 340, Reflect.get(game, 'configSnapshot')[enemyType]));
+        }, enemyType);
+        await page.keyboard.down('Space'); await advance(page, 1); await page.keyboard.up('Space');
+        await advance(page, 10);
+        const damaged = await inspect(page);
+        expect(damaged.enemies[0]).toMatchObject({ health: 25, texture: `${enemyType}ShipDamaged`, tint: 0xff9878 });
+        expect(damaged.effects.some((effect: { type: string }) => effect.type === 'impact')).toBe(true);
+        expect(damaged.score).toBe(0);
+        await advance(page, 12);
+        await page.keyboard.down('Space'); await advance(page, 1); await page.keyboard.up('Space');
+        await advance(page, 10);
+        const destroyed = await inspect(page);
+        expect(destroyed.enemies).toHaveLength(0);
+        expect(destroyed.score).toBe(1);
+        expect(destroyed.kills).toBe(1);
+        expect(destroyed.effects.filter((effect: { type: string }) => effect.type === 'destroy')).toHaveLength(1);
+        // Impact time differs with approaching Chasers and stationary Shooters.
+        // Observe the animation across fixed steps instead of assuming a kill frame.
+        const textures = new Set<string>();
+        for (let step = 0; step < 18; step++) {
+          await advance(page, 1);
+          for (const effect of (await inspect(page)).effects) {
+            if (effect.type === 'destroy') textures.add(effect.texture);
+          }
+        }
+        expect(textures.has('explosionLarge')).toBe(true);
+        expect(textures.size).toBeGreaterThan(1);
+        await advance(page, 35);
+        const finished = await inspect(page);
+        expect(finished.effects).toHaveLength(0);
+        expect(finished.score).toBe(1);
+        expect(finished.playerTint).toBe(0xffffff);
       });
-      await page.keyboard.down('Space'); await advance(page, 1); await page.keyboard.up('Space');
-      await advance(page, 8);
-      const damaged = await inspect(page);
-      expect(damaged.enemies[0]).toMatchObject({ health: 25, texture: 'chaserShipDamaged', tint: 0xff9878 });
-      expect(damaged.effects.some((effect: { type: string }) => effect.type === 'impact')).toBe(true);
-      expect(damaged.score).toBe(0);
-      await advance(page, 12);
-      await page.keyboard.down('Space'); await advance(page, 1); await page.keyboard.up('Space');
-      await advance(page, 8);
-      const destroyed = await inspect(page);
-      expect(destroyed.enemies).toHaveLength(0);
-      expect(destroyed.score).toBe(1);
-      expect(destroyed.kills).toBe(1);
-      expect(destroyed.effects.filter((effect: { type: string }) => effect.type === 'destroy')).toHaveLength(1);
-      await advance(page, 10);
-      expect((await inspect(page)).effects.some((effect: { texture: string }) => effect.texture === 'explosionLarge')).toBe(true);
-      await advance(page, 35);
-      const finished = await inspect(page);
-      expect(finished.effects).toHaveLength(0);
-      expect(finished.score).toBe(1);
-      expect(finished.playerTint).toBe(0xffffff);
-    });
+    }
 
     test('Chaser contact explodes, flashes player damage and never scores', async ({ page }) => {
       await start(page);
@@ -244,15 +256,79 @@ test('effects freeze with pause, expire after resume and release all views on na
 
 test('missing combat texture prevents combat safely and a new attempt can load successfully', async ({ page }) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
-  await page.route('**/effects/fire_1.png', route => route.abort());
-  await page.goto('/'); await page.getByRole('button', { name: 'Start Game', exact: true }).click();
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Start Game', exact: true }).waitFor();
+  // Route through the actual MSW transport: Service Worker requests bypass page.route.
+  await page.evaluate(async () => {
+    const resources = performance.getEntriesByType('resource');
+    const workerPath = resources.find(entry => entry.name.includes('/src/mocks/browser.ts'))!.name;
+    const mswPath = resources.find(entry => entry.name.includes('/deps/msw.js'))!.name;
+    const { worker } = await import(workerPath);
+    const { http, HttpResponse } = await import(mswPath);
+    worker.use(http.get('/assets/png/default/effects/fire_1.png', () => HttpResponse.error()));
+    Object.assign(window, { restoreAssetHandler: () => worker.resetHandlers() });
+  });
+  await page.getByRole('button', { name: 'Start Game', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Unable to load game assets');
   await expect(page.locator('canvas')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Quit Match', exact: true }).click();
-  await page.unroute('**/effects/fire_1.png');
+  await page.evaluate(() => Reflect.get(window, 'restoreAssetHandler')());
   await page.getByRole('button', { name: 'Start Game', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeEnabled();
   await expect(page.locator('canvas')).toHaveCount(1);
   expect(errors).toEqual([]);
+});
+
+test('all three ship families reuse equal-size official textures at damage thresholds', async ({ page }) => {
+  await start(page);
+  const stages = await page.evaluate(async () => {
+    const game = Reflect.get(window, 'feedbackGame'); const renderer = Reflect.get(game, 'renderer');
+    const state = game.getState(); const config = Reflect.get(game, 'configSnapshot');
+    const chaserPath = '/src/game/entities/Chaser.ts'; const shooterPath = '/src/game/entities/Shooter.ts';
+    const { createChaser } = await import(chaserPath); const { createShooter } = await import(shooterPath);
+    state.enemies.set('chaser', createChaser('chaser', 200, 200, config.chaser));
+    state.enemies.set('shooter', createShooter('shooter', 800, 400, config.shooter));
+    const assets = Reflect.get(renderer, 'assets');
+    const textureName = (texture: unknown) => Object.entries(assets).find(([, value]) => value === texture)?.[0];
+    const results = [];
+    // This checks rendering thresholds, not combat: damage itself is exercised by other tests.
+    for (const ratio of [1, 2 / 3, 1 / 3]) {
+      for (const ship of [...state.players.values(), ...state.enemies.values()]) ship.health = ship.maxHealth * ratio;
+      Reflect.get(game, 'render').call(game, 0);
+      const sprites = [Reflect.get(renderer, 'playerSprite'), ...Reflect.get(renderer, 'enemyViews').values()];
+      results.push(sprites.map(sprite => ({ texture: textureName(sprite.texture), width: sprite.width,
+        height: sprite.height, anchorX: sprite.anchor.x, anchorY: sprite.anchor.y })));
+    }
+    return results;
+  });
+  expect(stages.map(stage => stage.map(ship => ship.texture))).toEqual([
+    ['playerShip', 'chaserShip', 'shooterShip'],
+    ['playerShipDamaged', 'chaserShipDamaged', 'shooterShipDamaged'],
+    ['playerShipCritical', 'chaserShipCritical', 'shooterShipCritical'],
+  ]);
+  for (const stage of stages) for (const ship of stage) expect(ship).toMatchObject({ width: 66, height: 113, anchorX: 0.5, anchorY: 0.5 });
+});
+
+test('completion unmounts active effects and Play Again starts without residual feedback', async ({ page }) => {
+  await start(page);
+  await page.keyboard.down('Space'); await advance(page, 1); await page.keyboard.up('Space');
+  await page.evaluate(() => {
+    const game = Reflect.get(window, 'feedbackGame');
+    const effects = Reflect.get(Reflect.get(game, 'renderer'), 'combatEffects');
+    Object.assign(window, { finalEffects: effects, finalViews: [...effects.container.children] });
+    game.getState().remainingSeconds = 1 / 60;
+    Reflect.get(game, 'update').call(game, 1 / 60);
+  });
+  await expect(page.getByRole('heading', { name: 'Match Results', exact: true })).toBeVisible();
+  await expect(page.locator('canvas')).toHaveCount(0);
+  expect(await page.evaluate(() => Reflect.get(window, 'finalEffects').container.destroyed
+    && Reflect.get(window, 'finalViews').every((sprite: { destroyed: boolean }) => sprite.destroyed))).toBe(true);
+  await page.getByRole('button', { name: 'Play Again', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeEnabled();
+  const fresh = await inspect(page);
+  expect(fresh.effects).toHaveLength(0);
+  expect(fresh.score).toBe(0);
+  expect(fresh.health).toBe(100);
+  expect(fresh.playerTint).toBe(0xffffff);
 });

@@ -1599,6 +1599,34 @@ O avanço usa `playerMovementSpeed × magnitude × deltaSeconds` pela proa atual
 - Mudar o visual do Pause muda o relógio? “Não. Quem suspende a simulação é Game/GameLoop; o diálogo só representa a pausa e envia a intenção de retomar.”
 - Quando o resultado aparece como registrado? “Após confirmação da API. Um resultado local ou pendente continua identificado como não confirmado.”
 
+### Etapa 34 — Polimento do HUD, pausa, resultado e Captain's Log
+
+**Status:** Concluído
+
+**Responsável pela implementação:** Codex; aprovação visual e teste físico pelo desenvolvedor.
+
+**O que foi implementado:** Pause/Quit no HUD usam os botões oficiais com 9-slice e ícone de pausa oficial. Pause agora oferece Resume, Options dentro do diálogo e Main Menu. Result destaca score, motivo e tempo ativo; configurações, kills e data ficam no Match Details recolhível, enquanto registro, erros e retry permanecem acessíveis. Ranking/History usam PirateScreen, tabelas temáticas, paginação e navegação oficiais; em telas estreitas, as linhas se organizam em blocos com rótulos de campo.
+
+**Arquivos principais envolvidos:** `Game.tsx`, `GameCanvas.tsx`, `hudAssets.ts`, `PauseDialog.tsx`, `Options.tsx`, `Result.tsx`, `Ranking.tsx`, `MatchHistory.tsx`, `PaginationControls.tsx`, `PirateUI.css`, `pirateScreens.spec.ts`, `visualPolish.spec.ts` e baselines visuais.
+
+**Como funciona:** O formulário existente virou `OptionsForm`, usado na tela e dentro do diálogo; validação e armazenamento são os mesmos. Abrir esse formulário não navega nem desmonta GameCanvas. Game conserva seu snapshot, então salvar opções altera apenas a próxima partida. Resume continua a sessão pausada e Main Menu usa o abandono existente, sem gerar resultado/POST. O diálogo mantém showModal/cleanup, impede Escape e cicla Tab/Shift+Tab entre os campos e ações.
+
+**Por que foi feito dessa forma:** Reutilizar o formulário evita validações paralelas e preserva a partida montada. O layout desktop agora pode ultrapassar o limite visual de 960px, respeitando o espaço disponível e a proporção derivada do GameConfig. Apenas o limite CSS muda para ponteiro fino; dimensões lógicas, canvas Pixi/DPR, colisões e input permanecem iguais. Mobile mantém o layout aprovado com controles fora da arena. Em paisagem baixa, os botões do diálogo ficam menores, mas continuam com alvos de toque e escala uniforme dos cantos.
+
+**O que eu preciso entender:** Snapshot imutável por partida, diferença entre navegar e trocar uma visão dentro do modal, foco nativo e ciclo de Tab, container sizing e tamanho CSS versus mundo lógico. Tabelas continuam HTML semântico com cabeçalhos `scope=col`; `data-label` fornece rótulos visuais quando as linhas viram blocos. Queries, filtros, ordenação e contratos não foram alterados. “You” identifica registros locais; outros capitães são explicados como jogadores de demonstração, sem IDs técnicos. Revisar o código gerado pelo Codex antes de explicar em entrevista.
+
+**Como testar manualmente:** Em desktop grande, conferir arena maior sem deformação; em telefone nas duas orientações, conferir HUD e controles externos. Pausar, abrir Options, salvar valores, voltar e retomar: navio/tempo devem continuar do mesmo ponto e a configuração atual não mudar. Abandonar via Main Menu não pode registrar partida. Iniciar outra deve usar os valores salvos. Conferir Result por tempo e derrota, expandir Match Details e testar falha/retry sem confirmação antecipada. Navegar e paginar Ranking/History, conferir nomes, datas, configuração e campos em telas estreitas. Testar Tab/Shift+Tab, notch, teclado virtual, blur/aba oculta e rolagem no diálogo.
+
+**Testes/checks:** Typecheck, lint e build executados; suíte completa Playwright executada: 98 testes passaram, incluindo regressão de toque/API e comparação das baselines. Relatório HTML gerado em playwright-report/index.html. Novos testes verificam a mesma instância/canvas e o snapshot durante Options, estado congelado incluindo entidades em Maps, foco, ausência de POST ao abandonar, opções na próxima partida, posições globais/paginação e tabelas sem overflow. Capturas de arena pausada padronizam somente o texto visual do timer para estabilidade; não alteram o relógio da simulação. Baselines de Result/Pause foram atualizadas e novas capturas de Ranking/History/arena usam Chromium/Windows, com emulação de toque em retrato/paisagem. Avisos existentes de bundle maior que 500kB e NO_COLOR/FORCE_COLOR permanecem.
+
+**Limitações:** Arte da arena pode parecer mais suave quando ampliada além da resolução lógica original; não houve mudança de resolução Pixi nem profiling nesta tarefa. History usa rolagem vertical para manter todos os campos legíveis; a lista fica mais alta no celular. Options dentro da pausa também pode precisar de rolagem em paisagem/teclado virtual. Validação física continua necessária. Nenhum conflito com INSTRUCOES.md foi identificado; não houve commit, push ou alteração do Master Checklist.
+
+**Possíveis perguntas de entrevista:**
+
+- Por que Options na pausa não reinicia o jogo? “Só trocamos o conteúdo do diálogo. O GameCanvas permanece montado com o mesmo objeto de configuração.”
+- Por que o botão Main Menu não envia resultado? “Ele usa o fluxo de abandono; apenas o encerramento normal da simulação gera uma partida concluída.”
+- Como aumentar a arena sem mudar o gameplay? “Alterei o limite de exibição em CSS, mantendo proporção, coordenadas e tamanho lógico da simulação.”
+
 ## 5. Conceitos importantes para estudar
 
 - **Contexto seguro e Service Worker:** HTTPS confiável ou localhost permite recursos que HTTP em IP LAN não oferece. HTTPS com certificado inválido ainda exige resolver a confiança no dispositivo.

@@ -9,6 +9,10 @@ interface OptionsProps {
 }
 
 export function Options({ onNavigate }: OptionsProps) {
+  return <PirateScreen title="Options"><OptionsForm onBack={() => onNavigate('main-menu')} /></PirateScreen>;
+}
+
+export function OptionsForm({ onBack }: { onBack: () => void }) {
   const [draft, setDraft] = useState(() => {
     const saved = loadGameOptions();
     return { sessionDuration: String(saved.sessionDuration), enemySpawnInterval: String(saved.enemySpawnInterval) };
@@ -41,7 +45,6 @@ export function Options({ onNavigate }: OptionsProps) {
   };
 
   return (
-    <PirateScreen title="Options">
       <form className="options-form" noValidate onSubmit={handleSave}>
         <p>Times are in seconds. Saved settings apply only to new matches.</p>
         <div className="options-field">
@@ -76,9 +79,8 @@ export function Options({ onNavigate }: OptionsProps) {
         {storageError && <p className="options-error" role="alert">{storageError}</p>}
         <div className="options-actions">
           <button className="menu-button menu-button-primary" type="submit">Save</button>
-          <button className="menu-button menu-button-secondary" type="button" onClick={() => onNavigate('main-menu')}>Back</button>
+          <button className="menu-button menu-button-secondary" type="button" onClick={onBack}>Back</button>
         </div>
       </form>
-    </PirateScreen>
   );
 }

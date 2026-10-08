@@ -137,9 +137,10 @@ export const GameCanvas = forwardRef<GameCanvasControls, GameCanvasProps>(functi
   return (
     <div
       ref={containerRef}
+      className="game-canvas-frame"
       style={{
         position: 'relative',
-        width: `min(100%, ${config.arenaWidth}px, calc(100cqh * ${config.arenaWidth / config.arenaHeight}))`,
+        width: `min(100%, var(--arena-display-cap, ${config.arenaWidth}px), calc(100cqh * ${config.arenaWidth / config.arenaHeight}))`,
         aspectRatio: `${config.arenaWidth} / ${config.arenaHeight}`,
         border: '2px solid #334155',
         borderRadius: 12,

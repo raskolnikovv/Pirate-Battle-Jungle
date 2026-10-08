@@ -1,6 +1,8 @@
 import { Application, Container, Graphics, Sprite, TilingSprite } from 'pixi.js';
 import type { GameAssets } from '../assets/gameAssets';
 import type { GameState } from '../core/GameState';
+import { CombatEffects, COMBAT_VISUALS, type CombatVisualEvent } from './CombatEffects';
+import type { Player } from '@/types/domain';
 
 export const SHOW_COLLISION_DEBUG = false;
 
@@ -25,6 +27,7 @@ export class GameRenderer {
   private collisionDebug: Graphics | null = null;
   private healthLayer: Container | null = null;
   private readonly healthViews = new Map<string, HealthView>();
+  private combatEffects: CombatEffects | null = null;
 
   constructor(
     private readonly arenaWidth: number,
@@ -46,12 +49,29 @@ export class GameRenderer {
     this.projectileLayer = new Container();
     this.enemyLayer = new Container();
     this.stage.addChild(water, this.islandLayer, this.enemyLayer, this.projectileLayer, this.playerSprite);
+    this.combatEffects = new CombatEffects(assets);
+    this.stage.addChild(this.combatEffects.container);
     this.healthLayer = new Container();
     this.stage.addChild(this.healthLayer);
     if (import.meta.env.DEV && SHOW_COLLISION_DEBUG) {
       this.collisionDebug = new Graphics();
       this.stage.addChild(this.collisionDebug);
     }
+  }
+
+  emitCombatEffect(event: CombatVisualEvent): void { this.combatEffects?.emit(event); }
+
+  updateCombatEffects(deltaSeconds: number): void { this.combatEffects?.update(deltaSeconds); }
+
+  clearCombatEffects(): void { this.combatEffects?.clear(); }
+
+  private updateShipAppearance(sprite: Sprite, ship: Player, kind: 'player' | 'chaser' | 'shooter'): void {
+    if (!this.assets) return;
+    const ratio = ship.maxHealth > 0 ? ship.health / ship.maxHealth : 0;
+    const base = kind === 'player' ? 'playerShip' : kind === 'chaser' ? 'chaserShip' : 'shooterShip';
+    sprite.texture = ratio <= COMBAT_VISUALS.criticalHealthRatio ? this.assets[`${base}Critical`]
+      : ratio <= COMBAT_VISUALS.damagedHealthRatio ? this.assets[`${base}Damaged`] : this.assets[base];
+    sprite.tint = this.combatEffects?.shipTint(ship.id) ?? 0xffffff;
   }
 
   render(state: GameState | null, _alpha: number): void {
@@ -64,6 +84,7 @@ export class GameRenderer {
         this.playerSprite.visible = true;
         this.playerSprite.position.set(player.x, player.y);
         this.playerSprite.rotation = player.rotation;
+        this.updateShipAppearance(this.playerSprite, player, 'player');
       } else {
         this.playerSprite.visible = false;
       }
@@ -201,10 +222,13 @@ export class GameRenderer {
       }
       sprite.position.set(enemy.x, enemy.y);
       sprite.rotation = enemy.rotation;
+      this.updateShipAppearance(sprite, enemy, enemy.type);
     }
   }
 
   destroy(): void {
+    this.combatEffects?.destroy();
+    this.combatEffects = null;
     this.stage?.removeChildren().forEach((child) => child.destroy({ children: true }));
     this.islandViews.clear();
     this.projectileViews.clear();

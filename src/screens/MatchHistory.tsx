@@ -1,7 +1,7 @@
 import { useState, type CSSProperties } from "react";
 import { PaginationControls } from "@/components/PaginationControls";
 import { NavButton } from "@/components/NavButton";
-import { ScreenLayout } from "@/components/ScreenLayout";
+import { PirateScreen } from "@/components/PirateScreen";
 import { useHistory } from "@/hooks/useApi";
 import type { MatchHistoryRecord } from "@/api/matchContracts";
 import type { ScreenName } from "@/app/navigationTypes";
@@ -48,13 +48,8 @@ export function MatchHistory({ onNavigate }: MatchHistoryProps) {
   const [page, setPage] = useState(1);
   const { data, isLoading, isFetching, error } = useHistory({ page, pageSize: 5 });
 
-  const rowStyle = (idx: number): CSSProperties => ({
-    borderTop: "1px solid #334155",
-    backgroundColor: idx % 2 === 0 ? "rgba(30, 41, 59, 0.4)" : "transparent",
-  });
-
   return (
-    <ScreenLayout title="Match History">
+    <PirateScreen title="Match History">
       <div>
         {isLoading && <p role="status" style={centerColStyle}>Loading history...</p>}
         {isFetching && !isLoading && <p role="status">Updating history...</p>}
@@ -64,25 +59,25 @@ export function MatchHistory({ onNavigate }: MatchHistoryProps) {
           </p>
         )}
         {data && (
-          <div style={tableWrapStyle}>
-            <table style={tableStyle}>
+          <div className="captains-log" style={tableWrapStyle}>
+            <table className="log-table" style={tableStyle}>
               <thead>
                 <tr>
-                  <th style={thStyle}>Date</th>
-                  <th style={{ ...thStyle, textAlign: "right" }}>Score</th>
-                  <th style={{ ...thStyle, textAlign: "right" }}>Kills</th>
-                  <th style={{ ...thStyle, textAlign: "right" }}>Duration</th>
-                  <th style={{ ...thStyle, textAlign: "right" }}>Result</th>
-                  <th style={thStyle}>Configuration</th>
+                  <th scope="col" style={thStyle}>Date</th>
+                  <th scope="col" style={{ ...thStyle, textAlign: "right" }}>Score</th>
+                  <th scope="col" style={{ ...thStyle, textAlign: "right" }}>Kills</th>
+                  <th scope="col" style={{ ...thStyle, textAlign: "right" }}>Duration</th>
+                  <th scope="col" style={{ ...thStyle, textAlign: "right" }}>Result</th>
+                  <th scope="col" style={thStyle}>Configuration</th>
                 </tr>
               </thead>
               <tbody>
-                {data.items.map((entry, idx: number) => (
-                  <tr key={entry.matchId} style={rowStyle(idx)}>
-                    <td style={{ padding: "12px 16px", color: "#cbd5e1" }}>
+                {data.items.map((entry) => (
+                  <tr key={entry.matchId}>
+                    <td data-label="Date" style={{ padding: "12px 16px", color: "#cbd5e1" }}>
                       {new Date(entry.completedAt).toLocaleString()}
                     </td>
-                    <td
+                    <td data-label="Score"
                       style={{
                         padding: "12px 16px",
                         textAlign: "right",
@@ -92,7 +87,7 @@ export function MatchHistory({ onNavigate }: MatchHistoryProps) {
                     >
                       {entry.score.toLocaleString()}
                     </td>
-                    <td
+                    <td data-label="Kills"
                       style={{
                         padding: "12px 16px",
                         textAlign: "right",
@@ -101,7 +96,7 @@ export function MatchHistory({ onNavigate }: MatchHistoryProps) {
                     >
                       {entry.enemiesDefeated}
                     </td>
-                    <td
+                    <td data-label="Duration"
                       style={{
                         padding: "12px 16px",
                         textAlign: "right",
@@ -110,7 +105,7 @@ export function MatchHistory({ onNavigate }: MatchHistoryProps) {
                     >
                       {Number(entry.durationSeconds.toFixed(2))}s
                     </td>
-                    <td
+                    <td data-label="Result"
                       style={{
                         padding: "12px 16px",
                         textAlign: "right",
@@ -126,7 +121,7 @@ export function MatchHistory({ onNavigate }: MatchHistoryProps) {
                         ]
                       }
                     </td>
-                    <td style={{ padding: '12px 16px' }}>
+                    <td data-label="Configuration" style={{ padding: '12px 16px' }}>
                       <details>
                         <summary>Match details</summary>
                         <p>Player: {entry.playerName}</p>
@@ -137,7 +132,7 @@ export function MatchHistory({ onNavigate }: MatchHistoryProps) {
                 ))}
                 {data.items.length === 0 && (
                   <tr>
-                    <td colSpan={6} style={centerColStyle}>
+                    <td data-label="" colSpan={6} style={centerColStyle}>
                       No matches played yet.
                     </td>
                   </tr>
@@ -161,9 +156,9 @@ export function MatchHistory({ onNavigate }: MatchHistoryProps) {
         <div
           style={{ display: "flex", justifyContent: "center", paddingTop: 24 }}
         >
-          <NavButton onClick={() => onNavigate("main-menu")}>Back</NavButton>
+          <NavButton unstyled className="menu-button menu-button-primary" onClick={() => onNavigate("main-menu")}>Back</NavButton>
         </div>
       </div>
-    </ScreenLayout>
+    </PirateScreen>
   );
 }

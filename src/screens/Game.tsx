@@ -8,6 +8,8 @@ import { DEFAULT_GAME_CONFIG } from "@/config/gameConfig";
 import { loadGameOptions } from "@/config/gameOptions";
 import { TouchControls } from '@/components/TouchControls';
 import type { InputSnapshot } from '@/game/input/InputManager';
+import { pirateThemeStyle } from '@/components/pirateTheme';
+import '@/components/PirateUI.css';
 
 interface GameProps {
   onNavigate: (screen: ScreenName, payload?: GameResultPayload) => void;
@@ -38,7 +40,7 @@ export function Game({ onNavigate }: GameProps) {
 
   return (
     <div className="game-screen">
-      <header className="game-header">
+      <header className="game-header pirate-ui" style={pirateThemeStyle}>
         <section aria-label="Match information">
           <dl className="match-hud">
             {stats.map(({ label, icon, value }) => (
@@ -60,9 +62,9 @@ export function Game({ onNavigate }: GameProps) {
           </dl>
         </section>
         <div className="game-header-actions">
-          <button className="pause-action" disabled={hud?.status !== "running"}
-            onClick={() => gameControlsRef.current?.pause()}>Pause</button>
-          <button className="pause-action" onClick={handleQuit}>Quit Match</button>
+          <button type="button" className="menu-button menu-button-primary" disabled={hud?.status !== "running"}
+            onClick={() => gameControlsRef.current?.pause()}><img src={HUD_ASSET_MANIFEST.pauseIcon} width={18} height={18} alt="" />Pause</button>
+          <button type="button" className="menu-button menu-button-secondary" onClick={handleQuit}>Quit Match</button>
         </div>
       </header>
 
@@ -86,7 +88,7 @@ export function Game({ onNavigate }: GameProps) {
           <li><kbd>E</kbd> Right broadside</li>
         </ul>
       </section>
-      <PauseDialog paused={hud?.status === "paused"} onResume={() => gameControlsRef.current?.resume()} />
+      <PauseDialog paused={hud?.status === "paused"} onResume={() => gameControlsRef.current?.resume()} onQuit={handleQuit} />
     </div>
   );
 }

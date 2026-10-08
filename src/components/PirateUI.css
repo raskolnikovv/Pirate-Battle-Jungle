@@ -67,8 +67,6 @@
 .pirate-ui .options-form [role="status"] { color: #b9f0cb; }
 .pirate-ui .options-actions, .pirate-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 12px; padding-top: 16px; }
 .result-score-card { text-align: center; padding: 20px; margin-bottom: 16px; background: #122431cc; border: 1px solid #b4a27e; border-radius: 8px; }
-.result-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: 16px; margin-bottom: 16px; }
-.result-stat-card { text-align: center; padding: 16px; background: #122431cc; border-radius: 8px; }
 .pirate-ui .menu-secondary-content .pause-action { border: 1px solid #d1ac68; background: #dfb45f; color: #322009; white-space: normal; }
 .pirate-pause.pause-dialog {
   width: min(460px, calc(100% - max(16px, env(safe-area-inset-left)) - max(16px, env(safe-area-inset-right))));
@@ -83,9 +81,56 @@
 .pirate-pause .menu-panel { width: 100%; }
 .pirate-pause .pirate-title { margin-bottom: 12px; }
 .pirate-pause::backdrop { background: #061e2be0; }
+.pause-navigation { display: grid; gap: 12px; }
+.pirate-pause:has(.options-form) { width: min(640px, calc(100% - max(16px, env(safe-area-inset-left)) - max(16px, env(safe-area-inset-right)))); }
+.game-header-actions .menu-button {
+  --menu-button-height: 44px;
+  width: auto;
+  font-size: 14px;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.menu-button:disabled { opacity: .5; cursor: default; }
+.result-score-card > p:nth-child(2) { font-size: clamp(64px, 12vw, 88px) !important; line-height: 1.1; }
+.result-active-time { text-align: center; margin-bottom: 16px; }
+.result-details { margin-top: 20px; padding: 12px; border: 1px solid #879aa2; border-radius: 6px; }
+.pirate-ui summary { cursor: pointer; min-height: 44px; padding-block: 10px; }
+.result-ranking-link { max-width: 240px; margin: 16px auto 0; }
+.log-caption { color: #d9e3e6; font-size: 13px; margin-bottom: 16px; }
+.pirate-ui .captains-log { border-color: #b4a27e !important; background: #12243180; }
+.log-table th { background: #142936 !important; color: #ffd17a; }
+.log-table td { border-top: 1px solid #6b7781; overflow-wrap: anywhere; }
+.log-table tbody tr:nth-child(odd) { background: #14293680; }
+.log-table tbody tr:hover { background: #705c3040; }
+.pirate-ui nav[aria-label="Results pagination"] .menu-button { width: 150px; }
+.pirate-ui nav[aria-label="Results pagination"] p { text-align: center; }
+.pirate-screen-panel > div > div:has(> .menu-button:only-child) > .menu-button { max-width: 280px; }
+@media (pointer: fine) {
+  /* Only the display cap changes; logical world dimensions and DPR stay intact. */
+  .game-canvas-space .game-canvas-frame { --arena-display-cap: 100%; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .pirate-pause:not(:has(.options-form)) .menu-panel { padding: 8px 16px; }
+  .pirate-pause:not(:has(.options-form)) .pirate-title { font-size: 26px; margin-bottom: 8px; }
+  .pirate-pause:not(:has(.options-form)) p { font-size: 13px; margin: 8px 0 12px; }
+  .pirate-pause .pause-navigation { gap: 8px; }
+  .pirate-pause .pause-navigation .menu-button { --menu-button-height: 48px; font-size: 16px; }
+}
+@media (max-width: 760px) {
+  .log-table, .log-table tbody { display: block; }
+  .log-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .log-table tbody tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-bottom: 1px solid #879aa2; }
+  .log-table td { display: block; min-width: 0; text-align: left !important; padding: 10px 12px !important; border: 0; }
+  .log-table td::before { content: attr(data-label); display: block; color: #ffd17a; font-size: 12px; font-weight: 600; }
+  .log-table td[data-label="Date"], .log-table td[data-label="Configuration"], .log-table td[colspan] { grid-column: 1 / -1; }
+}
 @media (max-width: 480px) {
   .pirate-screen { padding: max(12px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
   .pirate-ui .menu-panel { border-width: 18px 14px; border-image-width: 18px 14px; padding: 8px 8px 16px; }
   .pirate-ui .menu-button { --menu-button-height: 60px; font-size: 18px; }
   .pirate-ui .menu-button-secondary { --menu-button-height: 56px; font-size: 13px; }
+  .game-header-actions .menu-button { --menu-button-height: 44px; font-size: 12px; }
 }

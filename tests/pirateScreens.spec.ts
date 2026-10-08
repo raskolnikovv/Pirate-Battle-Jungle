@@ -87,11 +87,16 @@ for (const [name, width, height] of [
     await expect(page.getByText('Registration: Submission failed', { exact: true })).toBeVisible();
     await expect(page.getByText('The API confirmed this match in your history.')).toHaveCount(0);
     await expect(page.locator('.result-score-card')).toContainText('2');
-    await expect(page.locator('.result-stat-card').nth(1)).toContainText('60s');
+    await expect(page.locator('.result-active-time')).toContainText('60s');
+    await expect(page.locator('.result-details')).not.toHaveAttribute('open', '');
     await reachable(page, page.locator('.pirate-actions button, [aria-label="Pending match submissions"] button'));
     if (!name.startsWith('small')) await expect(page.locator('.pirate-screen-panel')).toHaveScreenshot(`result-${name}.png`, {
-      mask: [page.locator('time'), page.locator('[aria-label="Pending match submissions"] li > p')],
+      mask: [page.locator('time:visible'), page.locator('[aria-label="Pending match submissions"] li > p')],
     });
+    await page.locator('.result-details summary').click();
+    await expect(page.locator('.result-details')).toContainText('Enemies Defeated: 2');
+    await expect(page.locator('.result-details')).toContainText('Session time: 60s · Enemy spawn time: 4s');
+    await page.locator('.result-details summary').click();
     await page.getByText('Development / demo network scenarios', { exact: true }).click();
     await page.getByLabel('Network scenario', { exact: true }).selectOption('success');
     await page.getByRole('button', { name: 'Retry registration', exact: true }).click();

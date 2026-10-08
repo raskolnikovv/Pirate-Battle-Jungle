@@ -4,15 +4,20 @@ import type { GameState } from '../core/GameState';
 import { createProjectile } from '../entities/Projectile';
 import type { InputSnapshot } from '../input/InputManager';
 import type { CollisionEvent } from './CollisionSystem';
+import type { CombatVisualEvent } from '../rendering/CombatEffects';
 
 export class CombatSystem {
+  constructor(private readonly onVisualEvent?: (event: CombatVisualEvent) => void) {}
+
   applyCollision(state: GameState, event: CollisionEvent, config: GameConfig): void {
     if (state.status !== 'running') return;
     if (event.type === 'projectile-enemy') {
       const enemy = state.enemies.get(event.targetId);
       if (!enemy || enemy.health <= 0) return;
       enemy.health = Math.max(0, enemy.health - event.damage);
+      if (event.damage > 0) this.onVisualEvent?.({ type: 'damage', shipId: enemy.id });
       if (enemy.health === 0) {
+        this.onVisualEvent?.({ type: 'destroy', x: enemy.x, y: enemy.y });
         state.enemies.delete(enemy.id);
         if (event.isPlayerOwned) {
           state.score += config.enemyKillRewards[enemy.type];
@@ -21,12 +26,18 @@ export class CombatSystem {
       }
     } else if (event.type === 'projectile-player') {
       const player = state.players.get(event.targetId);
-      if (player) player.health = Math.max(0, player.health - event.damage);
+      if (player) {
+        player.health = Math.max(0, player.health - event.damage);
+        if (event.damage > 0) this.onVisualEvent?.({ type: 'damage', shipId: player.id });
+      }
     } else if (event.type === 'enemy-player') {
       const enemy = state.enemies.get(event.sourceId);
       const player = state.players.get(event.targetId);
       if (!enemy || enemy.type !== 'chaser' || enemy.health <= 0 || !player) return;
       player.health = Math.max(0, player.health - event.damage);
+      this.onVisualEvent?.({ type: 'damage', shipId: player.id });
+      this.onVisualEvent?.({ type: 'impact', x: player.x, y: player.y });
+      this.onVisualEvent?.({ type: 'destroy', x: enemy.x, y: enemy.y });
       state.enemies.delete(enemy.id);
     }
   }
@@ -53,6 +64,7 @@ export class CombatSystem {
         isPlayerOwned: false,
       }, config.shooter);
       state.projectiles.set(projectile.id, projectile);
+      this.onVisualEvent?.({ type: 'fire', x: projectile.x, y: projectile.y, rotation: projectile.rotation });
       enemy.fireCooldownRemaining = config.shooter.fireCooldown;
     }
   }
@@ -103,5 +115,6 @@ export class CombatSystem {
       isPlayerOwned: true,
     }, config);
     state.projectiles.set(projectile.id, projectile);
+    this.onVisualEvent?.({ type: 'fire', x: projectile.x, y: projectile.y, rotation: projectile.rotation });
   }
 }

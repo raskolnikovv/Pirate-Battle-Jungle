@@ -4,4 +4,5 @@ export const HUD_ASSET_MANIFEST = {
   scoreIcon: '/assets/png/default/ui/hud/icon_score.png',
   timeIcon: '/assets/png/default/ui/hud/icon_time.png',
   healthIcon: '/assets/png/default/ui/hud/icon_heart.png',
+  pauseIcon: '/assets/png/default/ui/controls/icon_pause.png',
 } as const;

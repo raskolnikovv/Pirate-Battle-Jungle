@@ -31,7 +31,7 @@ export class Game {
   private readonly input = new InputManager();
   private readonly movementSystem = new MovementSystem();
   private readonly collisionSystem = new CollisionSystem();
-  private readonly combatSystem = new CombatSystem();
+  private readonly combatSystem: CombatSystem;
   private configSnapshot: GameConfig | null = null;
   private state: GameState | null = null;
   private spawnSystem: SpawnSystem | null = null;
@@ -46,6 +46,7 @@ export class Game {
     private readonly onHudChange?: (snapshot: GameHudSnapshot) => void,
     private readonly onMatchComplete?: (result: CompletedMatch) => void,
   ) {
+    this.combatSystem = new CombatSystem((event) => this.renderer.emitCombatEffect(event));
     this.loop = new GameLoop({
       update: (deltaSeconds) => {
         this.update(deltaSeconds);
@@ -75,6 +76,7 @@ export class Game {
     }
 
     this.loop.stop();
+    this.renderer.clearCombatEffects();
     this.configSnapshot = copyConfig(config);
     this.spawnSystem = new SpawnSystem(this.configSnapshot);
     this.state = this.createInitialState(this.configSnapshot);
@@ -117,6 +119,7 @@ export class Game {
 
   destroy(): void {
     this.stop();
+    this.renderer.clearCombatEffects();
     this.input.detach();
     this.detachPauseListeners();
     this.state = null;
@@ -185,6 +188,7 @@ export class Game {
     )));
     for (let step = 0; step < steps; step += 1) {
       const stepSeconds = Math.min(simulationSeconds / steps, this.state.remainingSeconds);
+      this.renderer.updateCombatEffects(stepSeconds);
       // Account for this active step even if lethal damage ends it early.
       this.state.remainingSeconds = Math.max(0, this.state.remainingSeconds - stepSeconds);
       if (this.state.remainingSeconds <= 1e-9) this.state.remainingSeconds = 0;
@@ -254,6 +258,11 @@ export class Game {
       if (hit || projectile.lifetime <= 0 || outside) {
         // Consume before applying damage so this projectile cannot hit a second target.
         state.projectiles.delete(projectile.id);
+        if (hit) this.renderer.emitCombatEffect({
+          type: 'impact',
+          x: projectile.x + (next.x - projectile.x) * hit.fraction,
+          y: projectile.y + (next.y - projectile.y) * hit.fraction,
+        });
         if (hit?.enemyId) {
           this.combatSystem.applyCollision(state, {
             type: 'projectile-enemy', sourceId: projectile.id,

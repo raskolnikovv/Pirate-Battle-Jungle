@@ -54,44 +54,26 @@ export function Result({ onNavigate, result, storageError = false }: ResultProps
           <p style={{ color: "#d9e3e6" }}>Final Score</p>
         </div>
 
-        <div className="result-stats">
-          <div className="result-stat-card">
-            <p style={{ color: "#d9e3e6", fontSize: 14, marginBottom: 4 }}>
-              Enemies Defeated
-            </p>
-            <p style={{ fontSize: 32, fontWeight: 700, color: "#60a5fa" }}>
-              {enemiesDefeated}
-            </p>
-          </div>
-          <div className="result-stat-card">
-            <p style={{ color: "#d9e3e6", fontSize: 14, marginBottom: 4 }}>
-              Active Time Played
-            </p>
-            <p style={{ fontSize: 32, fontWeight: 700, color: "#4ade80" }}>
-              {Number(duration.toFixed(2))}s
-            </p>
-          </div>
-        </div>
+        <p className="result-active-time">Active Time Played: <strong>{Number(duration.toFixed(2))}s</strong></p>
 
-        <section aria-label="Match details" style={{ lineHeight: 1.8 }}>
+        <section aria-label="Match registration" style={{ lineHeight: 1.8 }}>
           <p role="status" aria-atomic="true">Registration: <strong>{registrationLabels[registration?.status ?? 'not_submitted']}</strong></p>
           {registration?.status === 'submitted' && <p>The API confirmed this match in your history.</p>}
           {registration?.status === 'failed' && <p role="alert">{registration.message} You can still play another match.</p>}
-          <p>Session time: {result.config.sessionDuration}s · Enemy spawn time: {result.config.enemySpawnInterval}s</p>
-          <p>Completed: <time dateTime={result.completedAt}>{new Date(result.completedAt).toLocaleString('en-US')}</time></p>
-          {storageError && <p role="alert">Unable to save this result locally. It remains available until you reload.</p>}
         </section>
-        <div className="menu-secondary-content"><PendingSubmissions /><NetworkScenarioControls /></div>
         <div className="pirate-actions">
           <NavButton unstyled className="menu-button menu-button-primary" onClick={() => onNavigate("game")}>Play Again</NavButton>
-          <NavButton unstyled className="menu-button menu-button-secondary" onClick={() => onNavigate("ranking")} variant="secondary">
-            Ranking
-          </NavButton>
-          <NavButton unstyled className="menu-button menu-button-secondary" onClick={() => onNavigate("main-menu")} variant="secondary"
-          >
-            Main Menu
-          </NavButton>
+          <NavButton unstyled className="menu-button menu-button-primary" onClick={() => onNavigate("main-menu")}>Main Menu</NavButton>
         </div>
+        <details className="result-details">
+          <summary>Match Details</summary>
+          <p>Enemies Defeated: {enemiesDefeated}</p>
+          <p>Session time: {result.config.sessionDuration}s · Enemy spawn time: {result.config.enemySpawnInterval}s</p>
+          <p>Completed: <time dateTime={result.completedAt}>{new Date(result.completedAt).toLocaleString('en-US')}</time></p>
+        </details>
+        {storageError && <p role="alert">Unable to save this result locally. It remains available until you reload.</p>}
+        <div className="menu-secondary-content"><PendingSubmissions /><NetworkScenarioControls /></div>
+        <div className="result-ranking-link"><NavButton unstyled className="menu-button menu-button-secondary" onClick={() => onNavigate("ranking")}>Ranking</NavButton></div>
       </div>
     </PirateScreen>
   );

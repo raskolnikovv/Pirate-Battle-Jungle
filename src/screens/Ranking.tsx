@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from "react";
 import { NavButton } from "@/components/NavButton";
-import { ScreenLayout } from "@/components/ScreenLayout";
+import { PirateScreen } from "@/components/PirateScreen";
 import { useRanking } from "@/hooks/useApi";
 import { DEFAULT_GAME_CONFIG } from '@/config/gameConfig';
 import { loadGameOptions } from '@/config/gameOptions';
@@ -42,15 +42,11 @@ export function Ranking({ onNavigate }: RankingProps) {
   const [page, setPage] = useState(1);
   const { data, isLoading, isFetching, error } = useRanking({ page, pageSize: 5, configKey: getGameConfigKey(config) });
 
-  const rowStyle = (idx: number): CSSProperties => ({
-    borderTop: "1px solid #334155",
-    backgroundColor: idx % 2 === 0 ? "rgba(30, 41, 59, 0.4)" : "transparent",
-  });
-
   return (
-    <ScreenLayout title="Ranking">
+    <PirateScreen title="Ranking">
       <div>
         <p style={{ marginBottom: 16 }}>Matches using your saved settings: {config.sessionDuration}s session · {config.enemySpawnInterval}s spawn interval. All gameplay parameters must match.</p>
+        <p className="log-caption">“You” marks your records. Other captains are demo players.</p>
         {isLoading && <p role="status" style={centerColStyle}>Loading ranking...</p>}
         {!isLoading && isFetching && <p role="status">Updating ranking...</p>}
         {error && (
@@ -59,20 +55,20 @@ export function Ranking({ onNavigate }: RankingProps) {
           </p>
         )}
         {data && (
-          <div style={tableWrapStyle}>
-            <table style={tableStyle}>
+          <div className="captains-log" style={tableWrapStyle}>
+            <table className="log-table" style={tableStyle}>
               <thead>
                 <tr>
-                  <th style={{ ...thStyle, width: 64 }}>#</th>
-                  <th style={thStyle}>Player</th>
-                  <th style={{ ...thStyle, textAlign: "right" }}>Score</th>
-                  <th style={{ ...thStyle, textAlign: "right" }}>Duration</th>
+                  <th scope="col" style={{ ...thStyle, width: 64 }}>#</th>
+                  <th scope="col" style={thStyle}>Player</th>
+                  <th scope="col" style={{ ...thStyle, textAlign: "right" }}>Score</th>
+                  <th scope="col" style={{ ...thStyle, textAlign: "right" }}>Duration</th>
                 </tr>
               </thead>
               <tbody>
-                {data.items.map((entry, idx) => (
-                  <tr key={entry.matchId} style={rowStyle(idx)}>
-                    <td
+                {data.items.map((entry) => (
+                  <tr key={entry.matchId}>
+                    <td data-label="Position"
                       style={{
                         padding: "12px 16px",
                         fontWeight: 700,
@@ -81,10 +77,10 @@ export function Ranking({ onNavigate }: RankingProps) {
                     >
                       {entry.rank}
                     </td>
-                    <td style={{ padding: "12px 16px" }}>{entry.playerName}
+                    <td data-label="Player" style={{ padding: "12px 16px" }}>{entry.playerName}
                       {entry.playerId === LOCAL_PLAYER.id && <small style={{ display: 'block', color: '#cbd5e1' }}>You</small>}
                     </td>
-                    <td
+                    <td data-label="Score"
                       style={{
                         padding: "12px 16px",
                         textAlign: "right",
@@ -94,7 +90,7 @@ export function Ranking({ onNavigate }: RankingProps) {
                     >
                       {entry.score.toLocaleString()}
                     </td>
-                    <td
+                    <td data-label="Duration"
                       style={{
                         padding: "12px 16px",
                         textAlign: "right",
@@ -107,7 +103,7 @@ export function Ranking({ onNavigate }: RankingProps) {
                 ))}
                 {data.items.length === 0 && (
                   <tr>
-                    <td colSpan={4} style={centerColStyle}>
+                    <td data-label="" colSpan={4} style={centerColStyle}>
                       No completed matches for these settings yet.
                     </td>
                   </tr>
@@ -121,9 +117,9 @@ export function Ranking({ onNavigate }: RankingProps) {
         <div
           style={{ display: "flex", justifyContent: "center", paddingTop: 24 }}
         >
-          <NavButton onClick={() => onNavigate("main-menu")}>Back</NavButton>
+          <NavButton unstyled className="menu-button menu-button-primary" onClick={() => onNavigate("main-menu")}>Back</NavButton>
         </div>
       </div>
-    </ScreenLayout>
+    </PirateScreen>
   );
 }

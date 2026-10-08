@@ -4,6 +4,8 @@ export interface NavButtonProps {
   onClick: () => void;
   children: ReactNode;
   variant?: "primary" | "secondary";
+  className?: string;
+  unstyled?: boolean;
 }
 
 const baseStyle: CSSProperties = {
@@ -31,13 +33,17 @@ export function NavButton({
   onClick,
   children,
   variant = "primary",
+  className,
+  unstyled = false,
 }: NavButtonProps) {
   const style = variant === "primary" ? primaryStyle : secondaryStyle;
 
   return (
     <button
+      type="button"
+      className={className}
       onClick={onClick}
-      style={style}
+      style={unstyled ? undefined : style}
       onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.97)")}
       onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
       onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}

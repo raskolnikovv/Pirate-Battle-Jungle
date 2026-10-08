@@ -1,52 +1,77 @@
-import { NavButton } from "@/components/NavButton";
-import { ScreenLayout } from "@/components/ScreenLayout";
-import type { ScreenName } from "@/app/navigationTypes";
+import type { CSSProperties } from 'react';
+import { NavButton } from '@/components/NavButton';
+import type { ScreenName } from '@/app/navigationTypes';
 import { PendingSubmissions } from '@/components/PendingSubmissions';
 import { NetworkScenarioControls } from '@/components/NetworkScenarioControls';
+import { MENU_ASSET_MANIFEST as assets } from '@/game/assets/menuAssets';
+import './MainMenu.css';
 
 interface MainMenuProps {
   onNavigate: (screen: ScreenName) => void;
 }
 
+const menuStyle = {
+  '--menu-background': `url("${assets.background}")`,
+  '--menu-panel': `url("${assets.panel}")`,
+  '--menu-panel-slice': assets.panelSlice,
+  '--menu-primary': `url("${assets.primary}")`,
+  '--menu-primary-hover': `url("${assets.primaryHover}")`,
+  '--menu-primary-pressed': `url("${assets.primaryPressed}")`,
+  '--menu-secondary': `url("${assets.secondary}")`,
+  '--menu-secondary-pressed': `url("${assets.secondaryPressed}")`,
+  '--menu-button-slice': assets.buttonSlice,
+  '--menu-button-border-height-ratio': assets.buttonBorderHeightRatio,
+  '--menu-button-border-width-ratio': assets.buttonBorderWidthRatio,
+} as CSSProperties;
+
 export function MainMenu({ onNavigate }: MainMenuProps) {
   return (
-    <ScreenLayout title="Pirate Battle">
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: 16,
-        }}
-      >
-        <p
-          style={{
-            color: "#cbd5e1",
-            marginBottom: 16,
-            textAlign: "center",
-            maxWidth: 420,
-            lineHeight: 1.5,
-          }}
-        >
-          A top-down naval shooter. Defeat enemies, survive the session, and
-          climb the ranking!
-        </p>
-        <NavButton onClick={() => onNavigate("game")}>Start Game</NavButton>
-        <NavButton onClick={() => onNavigate("ranking")} variant="secondary">
-          Ranking
-        </NavButton>
-        <NavButton
-          onClick={() => onNavigate("match-history")}
-          variant="secondary"
-        >
-          Match History
-        </NavButton>
-        <NavButton onClick={() => onNavigate("options")} variant="secondary">
-          Options
-        </NavButton>
-        <PendingSubmissions />
-        <NetworkScenarioControls />
+    <main className="main-menu" style={menuStyle}>
+      <div className="menu-panel">
+        <header className="menu-heading">
+          <h1><span className="menu-sr-only">Pirate Battle</span>
+            <img src={assets.title} alt="" width="768" height="256" />
+          </h1>
+          <p className="menu-tagline">Set sail. Take command.</p>
+          <p>Navigate the islands. Defeat enemy ships. Survive the battle.</p>
+        </header>
+        <div className="menu-content">
+          <nav className="menu-navigation" aria-label="Main navigation">
+            <NavButton unstyled className="menu-button menu-button-primary" onClick={() => onNavigate('game')}>Start Game</NavButton>
+            <NavButton unstyled className="menu-button menu-button-primary" onClick={() => onNavigate('options')}>Options</NavButton>
+            <div className="menu-record-buttons">
+              <NavButton unstyled className="menu-button menu-button-secondary" onClick={() => onNavigate('ranking')}>Ranking</NavButton>
+              <NavButton unstyled className="menu-button menu-button-secondary" onClick={() => onNavigate('match-history')}>Match History</NavButton>
+            </div>
+          </nav>
+          <section className="menu-instructions" aria-labelledby="menu-controls-title">
+            <h2 id="menu-controls-title">How to play</h2>
+            <div className="menu-control-columns">
+              <section aria-labelledby="menu-keyboard-title">
+                <h3 id="menu-keyboard-title">Keyboard</h3>
+                <dl>
+                  <div><dt><kbd>W</kbd> / <kbd aria-label="Arrow Up">↑</kbd></dt><dd>Move forward</dd></div>
+                  <div><dt><kbd>A</kbd> / <kbd aria-label="Arrow Left">←</kbd></dt><dd>Rotate left</dd></div>
+                  <div><dt><kbd>D</kbd> / <kbd aria-label="Arrow Right">→</kbd></dt><dd>Rotate right</dd></div>
+                  <div><dt><kbd>Space</kbd></dt><dd>Front shot</dd></div>
+                  <div><dt><kbd>Q</kbd></dt><dd>Left broadside</dd></div>
+                  <div><dt><kbd>E</kbd></dt><dd>Right broadside</dd></div>
+                </dl>
+              </section>
+              <section aria-labelledby="menu-touch-title">
+                <h3 id="menu-touch-title">Touch</h3>
+                <p>Drag the joystick in any direction to steer. Your ship gradually turns and sails forward.</p>
+                <p>Hold <strong>Front shot</strong>, <strong>Left broadside</strong> or <strong>Right broadside</strong> to fire.</p>
+                <p>Steer and fire with two thumbs. Release the joystick to stop.</p>
+              </section>
+            </div>
+          </section>
+        </div>
+        <div className="menu-secondary-content">
+          <PendingSubmissions />
+          <NetworkScenarioControls />
+        </div>
       </div>
-    </ScreenLayout>
+    </main>
   );
 }

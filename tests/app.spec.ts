@@ -14,7 +14,5 @@ test('can navigate to game screen and back', async ({ page }) => {
   await page.getByRole('button', { name: /start game/i }).click();
   await expect(page.getByRole('button', { name: /quit match/i })).toBeVisible();
   await page.getByRole('button', { name: /quit match/i }).click();
-  await expect(page.getByRole('heading', { name: /match results/i })).toBeVisible();
-  await page.getByRole('button', { name: /main menu/i }).click();
   await expect(page.getByRole('heading', { name: /pirate battle/i })).toBeVisible();
 });

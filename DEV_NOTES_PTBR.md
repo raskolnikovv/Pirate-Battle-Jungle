@@ -1526,6 +1526,53 @@ O avanço usa `playerMovementSpeed × magnitude × deltaSeconds` pela proa atual
 - Reset precisa apagar Options? “Não. Ele restaura o mock e suas pendências; as configurações do jogador e o último resultado local são preservados.”
 - A diferença PC/celular era bug? “A diferença de competidores vinha de 60s versus 120s e era correta. Separadamente, encontramos e corrigimos a retenção de partidas apagadas no cache do Reset.”
 
+### Etapa 31 — Main Menu com assets oficiais e layout responsivo
+
+**Status:** Concluído
+
+**Responsável pela implementação:** Codex; validação física final pelo desenvolvedor.
+
+**O que foi implementado:** Menu com cenário naval, título, painel e botões oficiais, instruções de teclado/toque e navegação preservada. Pendências e cenários de rede continuam disponíveis abaixo, com o painel de cenários recolhível.
+
+**Arquivos principais envolvidos:** `MainMenu.tsx`, `MainMenu.css`, `menuAssets.ts`, `NavButton.tsx`, `mainMenu.spec.ts` e `app.spec.ts`.
+
+**Como funciona:** React continua responsável pelo menu. Um manifesto centraliza os PNGs; o CSS usa as bordas 40/32/40/32 verificadas em `ui_sheet.json` para dividir a moldura em nove regiões (`border-image`). O painel usa o PNG padrão para manter essas medidas; título e botões usam versões retina. Grid muda conforme largura e orientação, com rolagem vertical em telas pequenas e espaço para safe areas. Não houve alteração na simulação nem nos controles.
+
+**Por que foi feito dessa forma:** Reutilizar arte oficial evita redesenhar a moldura. A divisão preserva os cantos ao adaptar o painel. Botões continuam elementos nativos; `NavButton` aceita estilo opcional sem alterar a aparência padrão nas outras telas. O título decorativo tem nome semântico em texto, e os controles possuem foco visível.
+
+**O que eu preciso entender:** Estudar `border-image`, variáveis CSS, `minmax(0, ...)`, `100dvh`, safe areas e diferença entre imagem decorativa e nome acessível. Esta implementação foi feita pelo Codex; revisar essas escolhas antes de explicá-las em entrevista.
+
+**Como testar manualmente:** Abrir menu em desktop e celular nas duas orientações; rolar até todos os botões e instruções; navegar por Start Game, Options, Ranking e Match History; usar Tab/Enter; abrir cenários de rede e conferir seleção/Reset. Verificar telefone com notch e barras do navegador. Os testes automatizados cobrem viewports 1280×900, 390×844, 320×568, 844×390 e 667×375, alcance dos botões, foco e ausência de overflow horizontal. A expectativa antiga de Quit → Result foi corrigida no teste: abandono retorna ao menu, conforme comportamento já existente.
+
+**Possíveis perguntas de entrevista:**
+
+- Por que o menu não usa Pixi? “É uma interface de navegação; React e HTML oferecem semântica, foco e responsividade sem envolver a simulação.”
+- Como a moldura se adapta? “Usei as medidas reais do atlas no border-image: os cantos são preservados e as regiões intermediárias se estendem.”
+- Por que permitir rolagem no celular? “O conteúdo continua legível e acessível, mesmo quando não cabe inteiro na altura da tela.”
+
+### Etapa 32 — Correção da escala dos botões oficiais
+
+**Status:** Concluído
+
+**Responsável pela implementação:** Codex; inspeção física final pelo desenvolvedor.
+
+**O que foi implementado:** Os quatro botões de navegação agora usam nove regiões de imagem, preservando cantos e parafusos. Antes, `background-size: 100% 100%` esticava o PNG inteiro e produzia parafusos ovais.
+
+**Arquivos principais envolvidos:** `menuAssets.ts`, `MainMenu.tsx`, `MainMenu.css`, `mainMenu.spec.ts` e suas baselines PNG.
+
+**Como funciona:** O atlas informa 256×88 pixels lógicos (512×176 retina) e o retângulo do texto, mas não fornece bordas de slicing para botões. Após inspecionar os PNGs, foram definidos cortes de 32 pixels lógicos acima/abaixo e 40 nas laterais; no arquivo retina, isso corresponde a `64 80 64 80 fill`. A escala dos cantos em ambos os eixos é altura CSS / 88. `border-image` fica em um pseudo-elemento decorativo, separado do texto, mantendo o botão HTML nativo. Hover e pressed trocam a fonte usando os mesmos cortes. Em colunas até 280px, Ranking e Match History ficam empilhados para o texto não invadir os ornamentos.
+
+**Por que foi feito dessa forma:** A região central pode se alongar sem deformar os cantos. As medidas dos cortes são uma decisão baseada na arte inspecionada, não metadados oficiais inventados. NavButton e navegação não foram alterados nesta correção.
+
+**O que eu preciso entender:** Revisar unidades lógicas versus pixels retina, nove regiões, pseudo-elementos, stacking context (`isolation`) e container queries. A textura central ainda se estende; cantos e parafusos preservam proporções. Trabalho feito pelo Codex, a ser estudado antes da entrevista.
+
+**Como testar manualmente:** Abrir em desktop, retrato e paisagem; conferir parafusos circulares, texto centralizado e botões menores. Usar Tab, hover e pressionar sem navegar; confirmar todos os destinos. Playwright verifica proporção das bordas, texto dentro do botão, alvos de pelo menos 44px, ausência de overflow e capturas dos cinco tamanhos de tela mais hover/pressed. As baselines criadas nesta etapa são de Chromium/Windows; outro sistema pode precisar de baselines próprias por diferenças de fonte.
+
+**Possíveis perguntas de entrevista:**
+
+- Por que não usar tamanho de fundo 100%? “Ele escala os dois eixos de forma independente e deforma a arte quando o botão muda de proporção.”
+- O que o nine-slice resolve? “Preserva os ornamentos dos cantos enquanto permite alongar o centro para acomodar o layout.”
+
 ## 5. Conceitos importantes para estudar
 
 - **Contexto seguro e Service Worker:** HTTPS confiável ou localhost permite recursos que HTTP em IP LAN não oferece. HTTPS com certificado inválido ainda exige resolver a confiança no dispositivo.

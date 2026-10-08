@@ -1,0 +1,106 @@
+.main-menu {
+  min-height: 100dvh;
+  padding: max(24px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  background: linear-gradient(#08273080, #082730a6), var(--menu-background) center / cover;
+  display: grid;
+  place-items: center;
+  color: #fff1d2;
+}
+.menu-panel {
+  width: min(100%, 1060px);
+  min-width: 0;
+  padding: 16px 20px 20px;
+  border: solid transparent;
+  border-width: 24px 20px;
+  border-image: var(--menu-panel) var(--menu-panel-slice) / 24px 20px / 0 stretch;
+  background-color: #233544;
+  box-shadow: 0 12px 40px #0008;
+}
+.menu-heading { text-align: center; margin-bottom: 24px; }
+.menu-heading img { display: block; width: min(100%, 430px); height: auto; margin: auto; }
+.menu-heading p { font-size: 14px; line-height: 1.6; }
+.menu-heading .menu-tagline { font-size: 12px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; margin: 8px 0; }
+.menu-content { display: grid; grid-template-columns: minmax(240px, .85fr) minmax(0, 1.15fr); gap: 28px; align-items: center; }
+.menu-navigation { display: grid; gap: 12px; min-width: 0; container-type: inline-size; }
+.menu-record-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+@container (max-width: 280px) {
+  .menu-record-buttons { grid-template-columns: 1fr; }
+}
+.menu-button {
+  --menu-button-height: 64px;
+  --menu-button-image: var(--menu-primary);
+  --menu-button-border-y: calc(var(--menu-button-height) * var(--menu-button-border-height-ratio));
+  --menu-button-border-x: calc(var(--menu-button-height) * var(--menu-button-border-width-ratio));
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  min-width: 0;
+  height: var(--menu-button-height);
+  padding: 8px calc(var(--menu-button-border-x) + 4px);
+  background: transparent;
+  color: #322009;
+  font: inherit;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+/* A decorative layer keeps the label independent of the nine-slice borders.
+   All four corners use the same scale: CSS button height / sprite height. */
+.menu-button::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  border: solid transparent;
+  border-width: var(--menu-button-border-y) var(--menu-button-border-x);
+  border-image: var(--menu-button-image) var(--menu-button-slice) / var(--menu-button-border-y) var(--menu-button-border-x) / 0 stretch;
+}
+.menu-button-primary:hover { --menu-button-image: var(--menu-primary-hover); }
+.menu-button-primary:active { --menu-button-image: var(--menu-primary-pressed); }
+.menu-button-secondary { --menu-button-height: 56px; --menu-button-image: var(--menu-secondary); color: #fff1d2; font-size: 14px; }
+.menu-button-secondary:hover { filter: brightness(1.15); }
+.menu-button-secondary:active { --menu-button-image: var(--menu-secondary-pressed); }
+.main-menu button:focus-visible, .main-menu summary:focus-visible, .main-menu select:focus-visible { outline: 3px solid #ffdc72; outline-offset: 3px; }
+.menu-instructions { min-width: 0; }
+.menu-instructions h2 { font-family: Georgia, serif; font-size: 24px; margin-bottom: 16px; }
+.menu-instructions h3 { font-size: 14px; color: #ffd17a; margin-bottom: 10px; }
+.menu-control-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; font-size: 13px; line-height: 1.6; }
+.menu-control-columns section { min-width: 0; }
+.menu-control-columns dl { display: grid; gap: 6px; }
+.menu-control-columns dl div { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.menu-control-columns dt { white-space: nowrap; }
+.menu-control-columns dd { text-align: right; }
+.menu-control-columns p + p { margin-top: 10px; }
+.menu-control-columns kbd { padding: 2px 4px; border: 1px solid #879aa2; border-radius: 3px; font: inherit; color: #fff; }
+.menu-secondary-content { margin-top: 24px; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.menu-secondary-content details { background: #122431; }
+.menu-secondary-content summary { cursor: pointer; min-height: 44px; display: list-item; padding-block: 10px; color: #c8dae3; }
+.menu-secondary-content select { max-width: 100%; min-height: 44px; margin: 4px 0; color: #fff1d2; background: #233544; border: 1px solid #879aa2; border-radius: 4px; padding: 6px; font: inherit; }
+.menu-secondary-content button { min-height: 44px; max-width: 100%; }
+.menu-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 850px) {
+  .menu-content { grid-template-columns: 1fr; gap: 24px; }
+  .menu-navigation { width: 100%; max-width: 420px; margin: auto; }
+}
+@media (max-width: 480px) {
+  .main-menu { padding: max(12px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
+  .menu-panel { border-width: 18px 14px; border-image-width: 18px 14px; padding: 8px 8px 16px; }
+  .menu-heading { margin-bottom: 16px; }
+  .menu-heading p { font-size: 13px; }
+  .menu-control-columns { grid-template-columns: 1fr; gap: 18px; }
+  .menu-button { --menu-button-height: 60px; font-size: 18px; }
+  .menu-button-secondary { --menu-button-height: 56px; font-size: 13px; }
+  .menu-instructions h2 { font-size: 22px; }
+  .menu-secondary-content { margin-top: 16px; }
+}
+@media (orientation: landscape) and (max-height: 500px) and (min-width: 600px) {
+  .main-menu { padding-top: max(12px, env(safe-area-inset-top)); padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .menu-content { grid-template-columns: minmax(200px, .8fr) minmax(0, 1.2fr); gap: 20px; }
+  .menu-heading img { width: 290px; max-width: 100%; }
+  .menu-heading { margin-bottom: 16px; }
+  .menu-control-columns { grid-template-columns: 1fr; gap: 12px; }
+  .menu-control-columns dl { grid-template-columns: 1fr 1fr; gap: 6px 12px; }
+  .menu-control-columns dl div { display: block; }
+  .menu-control-columns dd { text-align: left; }
+}

@@ -15,6 +15,8 @@ export class AudioManager {
   private ocean: AudioBufferSourceNode | null = null;
   private loading: Promise<void> | null = null;
   private loadController: AbortController | null = null;
+  private unlockFailed = false;
+  private pendingUi: { name: UiSoundName; requestedAt: number } | null = null;
   private pendingStart = false;
   private active = false;
   private preferences = loadAudioPreferences();
@@ -42,7 +44,7 @@ export class AudioManager {
     let saved = true;
     try { localStorage.setItem(AUDIO_STORAGE_KEY, JSON.stringify(next)); }
     catch { saved = false; }
-    if (next.muted || next.effectsVolume === 0) this.stopVoices();
+    if (next.muted || next.effectsVolume === 0) { this.pendingUi = null; this.stopVoices(); }
     this.applyVolumes();
     this.syncOcean();
     this.notify();
@@ -53,7 +55,7 @@ export class AudioManager {
     const detachUiSounds = attachUiSounds(this);
     const unlock = (event: Event) => { if (event.isTrusted) this.unlock(); };
     const silence = () => {
-      this.stopVoices(); this.stopOcean();
+      this.pendingUi = null; this.stopVoices(); this.stopOcean();
       // The game itself owns automatic pause and explicit resume.
     };
     const visibility = () => { if (document.hidden) silence(); };
@@ -73,6 +75,7 @@ export class AudioManager {
 
   // Must be called synchronously inside a trusted user gesture, before async asset loading.
   unlock(): void {
+    this.unlockFailed = false;
     try {
       if (!this.context) {
         if (!window.AudioContext) {
@@ -91,8 +94,8 @@ export class AudioManager {
       }
       const context = this.context;
       void context.resume().then(() => {
-        if (this.context === context) { this.syncOcean(); this.playStart(); }
-      }).catch(() => { /* Retry on the next user gesture; never queue effects. */ });
+        if (this.context === context) { this.syncOcean(); this.playStart(); this.flushPendingUi(); }
+      }).catch(() => { if (this.context === context) { this.unlockFailed = true; this.pendingUi = null; } });
       this.load(context);
     } catch {
       this.error = 'Audio is unavailable in this browser. Gameplay remains available.';
@@ -117,6 +120,7 @@ export class AudioManager {
       }
       this.syncOcean();
       this.playStart();
+      this.flushPendingUi();
     });
   }
 
@@ -142,7 +146,22 @@ export class AudioManager {
     source.start();
   }
 
+  private flushPendingUi(): void {
+    const pending = this.pendingUi;
+    if (!pending || this.context?.state !== 'running' || !this.buffers.has(pending.name)) return;
+    this.pendingUi = null;
+    // Only the latest activation survives initial loading, briefly. Never replay hover/combat.
+    if (performance.now() - pending.requestedAt <= 3000) this.playUi(pending.name);
+  }
+
   playUi(name: UiSoundName): void {
+    if (!this.context || this.unlockFailed || this.preferences.muted || this.preferences.effectsVolume === 0
+      || document.hidden || !document.hasFocus()) return;
+    if (this.context.state !== 'running' || !this.buffers.has(name)) {
+      if (name !== 'uiHover') this.pendingUi = { name, requestedAt: performance.now() };
+      return;
+    }
+    if (name !== 'uiHover') this.pendingUi = null;
     const uiVoices = [...this.voices].filter(voice => voice.name.startsWith('ui'));
     // Keep UI overlap bounded. An activation takes priority over a previous hover.
     for (const voice of uiVoices) {
@@ -166,15 +185,18 @@ export class AudioManager {
     this.syncOcean(); this.playStart();
   }
   pause(): void {
+    this.pendingUi = null;
     this.active = false; this.pendingStart = false; this.stopVoices(); this.stopOcean(); this.play('pause', false);
   }
   resume(): void { this.active = true; this.syncOcean(); this.play('resume'); }
   finish(defeated: boolean): void {
+    this.pendingUi = null;
     this.active = false; this.pendingStart = false; this.stopVoices(); this.stopOcean();
     if (defeated) this.play('explosion', false);
     this.play(defeated ? 'over' : 'complete', false);
   }
   leave(preserveCompletion = false): void {
+    this.pendingUi = null;
     this.active = false; this.pendingStart = false;
     this.stopVoices(preserveCompletion); this.stopOcean();
   }
@@ -209,6 +231,7 @@ export class AudioManager {
   }
 
   dispose(): void {
+    this.pendingUi = null;
     this.active = false; this.pendingStart = false; this.stopVoices(); this.stopOcean();
     this.loadController?.abort(); this.loadController = null;
     const context = this.context;

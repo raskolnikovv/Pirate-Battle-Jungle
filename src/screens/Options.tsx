@@ -11,7 +11,7 @@ interface OptionsProps {
 }
 
 export function Options({ onNavigate }: OptionsProps) {
-  return <PirateScreen title="Options"><OptionsForm onBack={() => onNavigate('main-menu')} /></PirateScreen>;
+  return <PirateScreen title="Options" menuBackground><OptionsForm onBack={() => onNavigate('main-menu')} /></PirateScreen>;
 }
 
 export function OptionsForm({ onBack, context = 'menu' }: { onBack: () => void; context?: 'menu' | 'match' }) {
@@ -52,7 +52,7 @@ export function OptionsForm({ onBack, context = 'menu' }: { onBack: () => void; 
       <form className="options-form" noValidate onSubmit={handleSave}>
         {showMatchSettings && <>
         <p>Times are in seconds. Saved settings apply only to new matches.</p>
-        <div className="options-field">
+        <div className="options-field options-match-field">
           <label htmlFor="session-time">Game session time</label>
           <input ref={sessionRef} id="session-time" type="number" step="any"
             min={SESSION_DURATION_LIMITS.min} max={SESSION_DURATION_LIMITS.max} required
@@ -66,7 +66,7 @@ export function OptionsForm({ onBack, context = 'menu' }: { onBack: () => void; 
           <p id="session-hint">Between {SESSION_DURATION_LIMITS.min} and {SESSION_DURATION_LIMITS.max} seconds.</p>
           {errors.sessionDuration && <p id="session-error" className="options-error" role="alert">{errors.sessionDuration}</p>}
         </div>
-        <div className="options-field">
+        <div className="options-field options-match-field">
           <label htmlFor="spawn-time">Enemy spawn time</label>
           <input ref={spawnRef} id="spawn-time" type="number" step="any"
             min={ENEMY_SPAWN_INTERVAL_LIMITS.min} max={ENEMY_SPAWN_INTERVAL_LIMITS.max} required

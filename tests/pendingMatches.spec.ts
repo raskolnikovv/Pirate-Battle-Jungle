@@ -110,7 +110,7 @@ test('already accepted match with lost response retries without duplication', as
   await expect(page.getByText('Page 1 of 3 · 12 results · 5 per page', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'Match History', exact: true }).click();
-  await expect(page.getByText('Page 1 of 1 · 4 results · 5 per page', { exact: true })).toBeVisible();
+  await expect(page.getByText('Page 1 of 1 · 1 results · 5 per page', { exact: true })).toBeVisible();
 });
 
 test('multiple pending matches coexist and older ones can retry from Main Menu', async ({ page }) => {

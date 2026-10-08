@@ -43,7 +43,7 @@ export function Ranking({ onNavigate }: RankingProps) {
   const { data, isLoading, isFetching, error } = useRanking({ page, pageSize: 5, configKey: getGameConfigKey(config) });
 
   return (
-    <PirateScreen title="Ranking">
+    <PirateScreen title="Ranking" menuBackground>
       <div>
         <p style={{ marginBottom: 16 }}>Matches using your saved settings: {config.sessionDuration}s session · {config.enemySpawnInterval}s spawn interval. All gameplay parameters must match.</p>
         <p className="log-caption">“You” marks your records. Other captains are demo players.</p>

@@ -371,3 +371,57 @@ test.describe('touch UI feedback', () => {
     expect(await uiNames(page)).toEqual(['uiBack']);
   });
 });
+
+
+test('first trusted activation survives initial WAV loading exactly once; hover never queues', async ({ page }) => {
+  await fakeAudio(page);
+  await page.addInitScript(() => {
+    const original = window.fetch;
+    let release!: () => void;
+    const ready = new Promise<void>(resolve => { release = resolve; });
+    Object.assign(window, { releaseAudio: release });
+    window.fetch = async (input, init) => {
+      if (String(input).includes('/sounds/')) await ready;
+      return original(input, init);
+    };
+  });
+  await page.goto('/'); await expose(page);
+  await page.getByRole('button', { name: 'Options', exact: true }).hover();
+  expect(await page.evaluate(() => Reflect.get(window, 'audioTest').contexts)).toBe(0);
+  await page.getByRole('button', { name: 'Options', exact: true }).click();
+  expect(await uiNames(page)).toEqual([]);
+  expect(await page.evaluate(() => Reflect.get(Reflect.get(window, 'manager'), 'pendingUi').name)).toBe('uiOpen');
+  await page.evaluate(() => Reflect.get(window, 'releaseAudio')());
+  await loaded(page);
+  await expect.poll(() => uiNames(page)).toEqual(['uiOpen']);
+  expect(await page.evaluate(() => Reflect.get(window, 'audioTest').contexts)).toBe(1);
+  expect(await page.evaluate(() => Reflect.get(Reflect.get(window, 'manager'), 'pendingUi'))).toBeNull();
+});
+
+for (const cleanup of ['mute', 'blur', 'dispose'] as const) {
+  test(`initial UI activation is discarded on ${cleanup} before decoding`, async ({ page }) => {
+    await fakeAudio(page);
+    await page.addInitScript(() => {
+      const original = window.fetch;
+      let release!: () => void;
+      const ready = new Promise<void>(resolve => { release = resolve; });
+      Object.assign(window, { releaseAudio: release });
+      window.fetch = async (input, init) => {
+        if (String(input).includes('/sounds/')) await ready;
+        return original(input, init);
+      };
+    });
+    await page.goto('/'); await expose(page);
+    await page.getByRole('button', { name: 'Options', exact: true }).click();
+    await page.evaluate(cleanup => {
+      const manager = Reflect.get(window, 'manager');
+      if (cleanup === 'mute') manager.setPreferences({ ...manager.getPreferences(), muted: true });
+      else if (cleanup === 'blur') window.dispatchEvent(new Event('blur'));
+      else manager.dispose();
+      Reflect.get(window, 'releaseAudio')();
+    }, cleanup);
+    if (cleanup !== 'dispose') await loaded(page);
+    expect(await uiNames(page)).toEqual([]);
+    expect(await page.evaluate(() => Reflect.get(Reflect.get(window, 'manager'), 'pendingUi'))).toBeNull();
+  });
+}

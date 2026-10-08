@@ -80,7 +80,7 @@ test.describe('real insecure LAN origin', () => {
       await expect(page.getByRole('cell', { name: /Captain/ }).first()).toBeVisible();
       await page.getByRole('button', { name: 'Back', exact: true }).click();
       await page.getByRole('button', { name: 'Match History', exact: true }).click();
-      await expect(page.locator('tbody tr')).toHaveCount(4);
+      await expect(page.locator('tbody tr')).toHaveCount(1);
       expect(errors).toEqual([]);
     });
   }

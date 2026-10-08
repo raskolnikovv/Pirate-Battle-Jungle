@@ -14,11 +14,11 @@ async function readBaseline(page: Page, playerId = 'local-player'): Promise<{ hi
   }, playerId);
 }
 
-test('Success seeds local history and named competitors without exposing internal player IDs', async ({ page }) => {
+test('Success starts with empty personal history and keeps named Ranking competitors', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Ranking', exact: true }).waitFor();
   const baseline = await readBaseline(page);
-  expect(baseline.history).toHaveLength(3);
+  expect(baseline.history).toEqual([]);
   expect(baseline.history.every(record => record.playerId === 'local-player' && record.playerName === 'Captain')).toBe(true);
   expect(baseline.ranking).toHaveLength(11);
   const competitors = baseline.ranking.filter(record => record.playerId !== 'local-player');
@@ -36,10 +36,10 @@ test('Success seeds local history and named competitors without exposing interna
   }
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'Match History', exact: true }).click();
-  await expect(page.locator('tbody tr')).toHaveCount(3);
-  for (const details of await page.locator('tbody details').all()) await details.locator('summary').click();
-  await expect(page.getByText('Player: Captain', { exact: true })).toHaveCount(3);
-  expect(await page.locator('tbody').innerText()).not.toMatch(/fixture-player|fixture-match|local-player|Blackbeard/);
+  await expect(page.getByText('No matches played yet.')).toBeVisible();
+  await expect(page.locator('tbody details')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Previous', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeDisabled();
 });
 
 test('multiple-page fixtures remain response-only and Reset restores persisted Success baseline', async ({ page }) => {
@@ -48,17 +48,17 @@ test('multiple-page fixtures remain response-only and Reset restores persisted S
   await page.getByLabel('Network scenario', { exact: true }).selectOption('multiple_pages');
   await expect(page.getByText('Scenario saved. Request sequences restarted.', { exact: true })).toBeVisible();
   const multiple = await readBaseline(page);
-  expect(multiple.history).toHaveLength(18);
+  expect(multiple.history).toHaveLength(15);
   expect(multiple.history.every(record => record.playerId === 'local-player')).toBe(true);
   expect(multiple.ranking).toHaveLength(26);
   expect(multiple.history.filter(record => record.matchId.startsWith('scenario-page-'))).toHaveLength(15);
   await page.getByLabel('Network scenario', { exact: true }).selectOption('success');
-  await expect.poll(async () => (await readBaseline(page)).history.length).toBe(3);
+  await expect.poll(async () => (await readBaseline(page)).history.length).toBe(0);
   const success = await readBaseline(page);
   expect(success.ranking).toHaveLength(11);
   expect([...success.ranking, ...success.history].some(record => record.matchId.startsWith('scenario-page-'))).toBe(false);
   await page.getByLabel('Network scenario', { exact: true }).selectOption('multiple_pages');
-  await expect.poll(async () => (await readBaseline(page)).history.length).toBe(18);
+  await expect.poll(async () => (await readBaseline(page)).history.length).toBe(15);
   await page.getByRole('button', { name: 'Reset network demo', exact: true }).click();
   await expect(page.getByText('Reset complete: initial fixtures restored; confirmed and pending matches cleared.', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Network scenario', { exact: true })).toHaveValue('success');

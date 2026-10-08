@@ -61,6 +61,8 @@ npm run dev:mobile
 
 Trust the CA's public `rootCA.pem` on the phone, then open `https://192.168.3.2:5174`. Never transfer the CA private key. `.cert/` is ignored; missing certificates cause startup to fail clearly. Regenerate certificates when the IP changes. HTTP/HTTPS, localhost/LAN IP and different browsers have **separate local storage**.
 
+Menu images are decoded before navigation becomes available, with an accessible progress bar and retry on failure. Starting a match loads gameplay textures separately; both loading stages use the menu background. Progress counts resources, not downloaded bytes. UI sounds require the first trusted click/key gesture; hover alone cannot unlock browser audio.
+
 ## Controls
 
 | Keyboard | Action |
@@ -102,7 +104,7 @@ Axios calls relative `/api` endpoints; TanStack Query owns lists/cache. This is 
 | `GET /api/history` | Pages confirmed records for the local player. |
 | `GET /api/mock-status` | Interception readiness probe. |
 
-Both list screens request 5 items per page. Ranking orders score descending, active duration ascending, completion date ascending, then match ID ascending. History orders newest completion first, then match ID ascending. Ranking is **per match**, not each player's aggregated best score. Other captains are fixtures; custom configurations can exclude all default-config fixtures.
+Both list screens request 5 items per page. Ranking orders score descending, active duration ascending, completion date ascending, then match ID ascending. History starts empty for a new local player and shows confirmed matches only (the Multiple pages demo scenario adds temporary sample records). History orders newest completion first, then match ID ascending. Ranking is **per match**, not each player's aggregated best score. Other captains are fixtures; custom configurations can exclude all default-config fixtures.
 
 Completed matches enter pending local storage **before** POST. Only a validated API confirmation marks success and invalidates Ranking/History. Failures retain manual **Retry registration**, including after refresh. Retry after server acceptance recovers the same record without duplication. Last Result is restored separately; its session registration label is not a durable receipt. Refresh neither restores active gameplay nor silently sends pending records.
 

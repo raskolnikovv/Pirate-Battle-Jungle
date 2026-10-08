@@ -138,3 +138,18 @@
   .pirate-ui .menu-button-secondary { --menu-button-height: 56px; font-size: 13px; }
   .game-header-actions .menu-button { --menu-button-height: 44px; font-size: 12px; }
 }
+
+/* Compact menu Options; short/mobile viewports scroll normally, without clipping actions. */
+.pirate-screen:has(.options-form) { align-items: safe center; }
+.pirate-screen .options-form { gap: 12px; }
+.pirate-screen:has(.options-form) .pirate-title { margin-bottom: 12px; }
+.pirate-screen .options-form .audio-controls { gap: 8px; padding: 12px; }
+.pirate-screen .options-form .options-field { gap: 4px; }
+.pirate-screen .options-form .options-actions { padding-top: 4px; }
+.pirate-screen .options-form [role="status"]:empty { display: none; }
+@media (min-width: 640px) {
+  .pirate-screen .options-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pirate-screen .options-form > :not(.options-match-field) { grid-column: 1 / -1; }
+  .pirate-screen .options-form > .audio-controls:not(.display-controls) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pirate-screen .options-form > .audio-controls > :not(.options-field) { grid-column: 1 / -1; }
+}

@@ -1,5 +1,7 @@
+import { MENU_ASSET_MANIFEST } from "@/game/assets/menuAssets";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { MenuAssetLoader } from "@/components/MenuAssetLoader";
 import { App } from "@/app/App";
 import { ReactQueryProvider } from "@/app/ReactQueryProvider";
 import { ensureMockWorkerReady } from "@/mocks/browser";
@@ -17,10 +19,12 @@ async function bootstrap() {
     throw new Error("Root element not found");
   }
 
+  rootElement.style.setProperty('--loading-background', `url("${MENU_ASSET_MANIFEST.mainMenuBackground}")`);
+
   createRoot(rootElement).render(
     <StrictMode>
       <ReactQueryProvider>
-        <App />
+        <MenuAssetLoader><App /></MenuAssetLoader>
       </ReactQueryProvider>
     </StrictMode>,
   );

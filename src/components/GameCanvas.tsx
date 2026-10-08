@@ -1,3 +1,4 @@
+import { LoadingScreen } from './LoadingScreen';
 import { Application } from 'pixi.js';
 import { useSyncExternalStore } from 'react';
 import { getShowFps, subscribeDisplayPreferences } from '@/config/displayPreferences';
@@ -33,6 +34,7 @@ export const GameCanvas = forwardRef<GameCanvasControls, GameCanvasProps>(functi
   const showFpsRef = useRef(showFps);
   showFpsRef.current = showFps;
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState<CanvasStatus>('loading');
   const hudCallbackRef = useRef(onHudChange);
   const gameRef = useRef<Game | null>(null);
@@ -91,11 +93,15 @@ export const GameCanvas = forwardRef<GameCanvasControls, GameCanvasProps>(functi
     };
 
     async function initialize(): Promise<void> {
+      setProgress(0);
       setStatus('loading');
       hudCallbackRef.current?.(null);
 
       try {
-        assets = await loadGameAssets();
+        assets = await loadGameAssets((loaded, total) => {
+          // Reserve the final step for Pixi initialization; no simulation runs yet.
+          if (!cancelled) setProgress(loaded / (total + 1));
+        });
         if (cancelled) {
           cleanup();
           return;
@@ -142,6 +148,7 @@ export const GameCanvas = forwardRef<GameCanvasControls, GameCanvasProps>(functi
           releaseProfile = attachProfile(game, app, assets, config);
         }
         game.start(config);
+        setProgress(1);
         setStatus('ready');
       } catch (error) {
         cleanup();
@@ -175,20 +182,7 @@ export const GameCanvas = forwardRef<GameCanvasControls, GameCanvasProps>(functi
       }}
     >
       {status === 'ready' && showFps && <span className="fps-counter" aria-live="off">FPS: {fps ?? '--'}</span>}
-      {status === 'loading' && (
-        <div
-          role="status"
-          style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'grid',
-            placeItems: 'center',
-            color: '#e2e8f0',
-          }}
-        >
-          Loading arena...
-        </div>
-      )}
+      {status === 'loading' && <LoadingScreen className="arena-loader" title="Loading arena..." progress={progress} />}
       {status === 'error' && (
         <div
           role="alert"

@@ -44,8 +44,10 @@ export function resetConfirmedMockMatches(): boolean {
 }
 
 export function getMockHistory(playerId: string, extra: MatchHistoryRecord[] = []): MatchHistoryRecord[] {
+  // Local demo matches remain Ranking fixtures, never personal completed history.
+  const localDemoIds = new Set(HISTORY_FIXTURE.map(record => record.matchId));
   return getAllMatches(extra)
-    .filter((record) => record.playerId === playerId)
+    .filter((record) => record.playerId === playerId && !localDemoIds.has(record.matchId))
     .sort((a, b) => Date.parse(b.completedAt) - Date.parse(a.completedAt)
       || (a.matchId < b.matchId ? -1 : a.matchId > b.matchId ? 1 : 0));
 }

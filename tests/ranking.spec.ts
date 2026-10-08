@@ -39,7 +39,7 @@ test('third and fourth completed matches remain visible after a worker interrupt
     await expect(page.getByRole('alert')).toHaveCount(0);
     await page.getByRole('button', { name: 'Back', exact: true }).click();
     await page.getByRole('button', { name: 'Match History', exact: true }).click();
-    const total = match + 3;
+    const total = match;
     await expect(page.getByText(`Page 1 of ${Math.ceil(total / 5)} · ${total} results · 5 per page`, { exact: true })).toBeVisible();
     await expect(page.getByRole('alert')).toHaveCount(0);
     await page.getByRole('button', { name: 'Back', exact: true }).click();
@@ -58,7 +58,7 @@ test('ranking can be reopened after history and pagination navigation', async ({
     await expect(page.getByText('Page 2 of 3', { exact: false })).toBeVisible();
     await page.getByRole('button', { name: 'Back', exact: true }).click();
     await page.getByRole('button', { name: 'Match History', exact: true }).click();
-    await expect(page.getByText('Page 1 of 1', { exact: false })).toBeVisible();
+    await expect(page.getByText('No matches played yet.')).toBeVisible();
     await page.getByRole('button', { name: 'Back', exact: true }).click();
   }
   expect(errors).toEqual([]);

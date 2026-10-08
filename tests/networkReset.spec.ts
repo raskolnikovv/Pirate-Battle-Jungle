@@ -103,7 +103,7 @@ for (const origin of ['desktop', 'phone LAN'] as const) {
       expect(after.options).toBe(beforeReset.options);
       expect(after.result).toBe(beforeReset.result);
       expect(after.ranking.total).toBe(origin === 'desktop' ? 0 : 11);
-      expect(after.history.total).toBe(3);
+      expect(after.history.total).toBe(0);
       expect([...after.ranking.items, ...after.history.items].map((record: { matchId: string }) => record.matchId)).not.toContain(played.matchId);
       const caches = await page.evaluate(() => {
         const client = Reflect.get(window, 'resetQueryClient');
@@ -128,7 +128,7 @@ for (const origin of ['desktop', 'phone LAN'] as const) {
       await expect(page.getByRole('cell', { name: '47', exact: true })).toHaveCount(0);
       await page.getByRole('button', { name: 'Back', exact: true }).click();
       await page.getByRole('button', { name: 'Match History', exact: true }).click();
-      await expect(page.locator('tbody tr')).toHaveCount(3);
+      await expect(page.getByText('No matches played yet.')).toBeVisible();
       await expect(page.getByRole('cell', { name: '47', exact: true })).toHaveCount(0);
       await page.reload();
       const reloaded = await readState(page);
@@ -158,7 +158,7 @@ test('clean Success/All/default baseline is identical on localhost and actual HT
     expect(phoneState.configKey).toBe(pcState.configKey);
     expect(phoneState.ranking).toEqual(pcState.ranking);
     expect(phoneState.history).toEqual(pcState.history);
-    expect(pcState.ranking.total).toBe(11); expect(pcState.history.total).toBe(3);
+    expect(pcState.ranking.total).toBe(11); expect(pcState.history.total).toBe(0);
     await pc.evaluate(() => localStorage.setItem('pirate-battle:options:v1', JSON.stringify({ version: 1, sessionDuration: 60, enemySpawnInterval: 3 })));
     const custom = await readState(pc);
     expect(custom.configKey).not.toBe(pcState.fixtureConfigKey);

@@ -36,7 +36,10 @@ export const GAME_ASSET_MANIFEST = {
 export type GameAssetKey = keyof typeof GAME_ASSET_MANIFEST;
 export type GameAssets = Record<GameAssetKey, Texture>;
 
-export async function loadGameAssets(): Promise<GameAssets> {
+export async function loadGameAssets(onProgress?: (loaded: number, total: number) => void): Promise<GameAssets> {
+  let loaded = 0;
+  const total = Object.keys(GAME_ASSET_MANIFEST).length;
+  onProgress?.(0, total);
   const results = await Promise.allSettled(
     Object.entries(GAME_ASSET_MANIFEST).map(async ([key, path]) => {
       const image = new Image();
@@ -46,7 +49,9 @@ export async function loadGameAssets(): Promise<GameAssets> {
       } catch {
         throw new Error(`Could not load gameplay asset: ${path}`);
       }
-      return [key, Texture.from(image)] as const;
+      const texture = Texture.from(image);
+      onProgress?.(++loaded, total);
+      return [key, texture] as const;
     }),
   );
   const textures: [string, Texture][] = [];

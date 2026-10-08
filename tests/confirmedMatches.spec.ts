@@ -63,7 +63,7 @@ test('confirmed matches survive reload and duplicate submissions return the same
   expect(afterReload.status).toBe(200);
   expect(afterReload.data).toEqual(record);
   const { history, ranking } = await queryMatches(page);
-  expect(history.total).toBe(4);
+  expect(history.total).toBe(1);
   expect(ranking.total).toBe(12);
   expect(history.items.filter((item: MatchHistoryRecord) => item.matchId === record.matchId)).toEqual([record]);
   expect(ranking.items.filter((item: MatchHistoryRecord) => item.matchId === record.matchId)).toHaveLength(1);
@@ -73,7 +73,7 @@ test('confirmed matches survive reload and duplicate submissions return the same
   await expect(page.getByText('Page 1 of 3 · 12 results · 5 per page', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'Match History', exact: true }).click();
-  await expect(page.getByText('Page 1 of 1 · 4 results · 5 per page', { exact: true })).toBeVisible();
+  await expect(page.getByText('Page 1 of 1 · 1 results · 5 per page', { exact: true })).toBeVisible();
 });
 
 test('conflicting IDs return 409 without replacing accepted data, including after reload', async ({ page }) => {
@@ -112,7 +112,7 @@ test('reset removes confirmed records and preserves fixtures and saved options',
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Pirate Battle', exact: true })).toBeVisible();
   const { history, ranking } = await queryMatches(page);
-  expect(history.total).toBe(3);
+  expect(history.total).toBe(0);
   expect(ranking.total).toBe(11);
 });
 
@@ -128,7 +128,7 @@ test('storage write failure does not confirm or add a match in memory', async ({
   }, storageKey);
   expect((await postMatch(page, record)).status).toBe(503);
   const { history, ranking } = await queryMatches(page);
-  expect(history.total).toBe(3);
+  expect(history.total).toBe(0);
   expect(ranking.total).toBe(11);
   expect(await page.evaluate((key) => localStorage.getItem(key), storageKey)).toBeNull();
 });
@@ -143,7 +143,7 @@ test('unavailable confirmed storage does not prevent startup or fixture queries'
   }, storageKey);
   await openApp(page);
   const { history, ranking } = await queryMatches(page);
-  expect(history.total).toBe(3);
+  expect(history.total).toBe(0);
   expect(ranking.total).toBe(11);
 });
 
@@ -162,7 +162,7 @@ for (const invalid of ['malformed JSON', 'wrong version', 'invalid record', 'dup
     await page.reload();
     await expect(page.getByRole('heading', { name: 'Pirate Battle', exact: true })).toBeVisible();
     const { history, ranking } = await queryMatches(page);
-    expect(history.total).toBe(3);
+    expect(history.total).toBe(0);
     expect(ranking.total).toBe(11);
     expect(errors).toEqual([]);
   });

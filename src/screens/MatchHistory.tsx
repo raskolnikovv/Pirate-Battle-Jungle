@@ -49,7 +49,7 @@ export function MatchHistory({ onNavigate }: MatchHistoryProps) {
   const { data, isLoading, isFetching, error } = useHistory({ page, pageSize: 5 });
 
   return (
-    <PirateScreen title="Match History">
+    <PirateScreen title="Match History" menuBackground>
       <div>
         {isLoading && <p role="status" style={centerColStyle}>Loading history...</p>}
         {isFetching && !isLoading && <p role="status">Updating history...</p>}

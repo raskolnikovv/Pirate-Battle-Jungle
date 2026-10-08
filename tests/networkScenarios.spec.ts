@@ -49,11 +49,11 @@ async function counts(page: Page) {
 test('success, empty target, multi-page fixtures and scenario persistence', async ({ page }) => {
   await open(page);
   expect((await request(page, 'ranking')).total).toBe(11);
-  expect((await request(page, 'history')).total).toBe(3);
+  expect((await request(page, 'history')).total).toBe(0);
   await select(page, 'empty', 'ranking');
   await page.getByRole('button', { name: 'Ranking', exact: true }).click();
   await expect(page.getByText('No completed matches for these settings yet.')).toBeVisible();
-  expect((await request(page, 'history')).total).toBe(3);
+  expect((await request(page, 'history')).total).toBe(0);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByText('Development / demo network scenarios', { exact: true }).click();
   await select(page, 'empty');
@@ -69,9 +69,9 @@ test('success, empty target, multi-page fixtures and scenario persistence', asyn
   await page.getByText('Development / demo network scenarios', { exact: true }).click();
   await expect(page.getByLabel('Network scenario', { exact: true })).toHaveValue('multiple_pages');
   await page.getByRole('button', { name: 'Match History', exact: true }).click();
-  await expect(page.getByText('Page 1 of 4 · 18 results · 5 per page')).toBeVisible();
+  await expect(page.getByText('Page 1 of 3 · 15 results · 5 per page')).toBeVisible();
   await page.getByRole('button', { name: 'Next', exact: true }).click();
-  await expect(page.getByText('Page 2 of 4 · 18 results · 5 per page')).toBeVisible();
+  await expect(page.getByText('Page 2 of 3 · 15 results · 5 per page')).toBeVisible();
 });
 
 test('slow response exposes loading without blocking navigation', async ({ page }) => {
@@ -149,7 +149,7 @@ for (const scenario of ['timeout', 'post_confirmation_timeout', 'unavailable']) 
     await expect(page.getByText('Registration: Submitted', { exact: true })).toBeVisible();
     expect(await counts(page)).toEqual({ pending: 0, confirmed: 1 });
     expect((await request(page, 'ranking')).total).toBe(12);
-    expect((await request(page, 'history')).total).toBe(4);
+    expect((await request(page, 'history')).total).toBe(1);
     await page.getByRole('button', { name: 'Play Again', exact: true }).click();
     await page.locator('canvas').waitFor();
     await page.getByRole('button', { name: 'Quit Match', exact: true }).click();
@@ -171,7 +171,7 @@ test('reset clears accepted and pending records, preserves Options, restores ini
   await expect(page.getByText('Reset complete: initial fixtures restored; confirmed and pending matches cleared.')).toBeVisible();
   expect(await counts(page)).toEqual({ pending: 0, confirmed: 0 });
   expect((await request(page, 'ranking')).total).toBe(11);
-  expect((await request(page, 'history')).total).toBe(3);
+  expect((await request(page, 'history')).total).toBe(0);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('pirate-battle:options:v1')!).sessionDuration)).toBe(60);
   await expect(page.getByLabel('Network scenario', { exact: true })).toHaveValue('success');
   await expect(page.getByText('Registration: Not submitted in this session', { exact: true })).toBeVisible();
@@ -209,10 +209,10 @@ test('empty and multi-page scenarios never delete or persist extra confirmed dat
   expect((await request(page, 'history')).total).toBe(0);
   expect(await counts(page)).toEqual({ pending: 0, confirmed: 1 });
   await select(page, 'multiple_pages');
-  expect((await request(page, 'history')).total).toBe(19);
+  expect((await request(page, 'history')).total).toBe(16);
   expect(await counts(page)).toEqual({ pending: 0, confirmed: 1 });
   await select(page, 'success');
-  expect((await request(page, 'history')).total).toBe(4);
+  expect((await request(page, 'history')).total).toBe(1);
 });
 
 test('multiple-page ranking respects custom saved configuration', async ({ page }) => {
@@ -261,14 +261,14 @@ test('delayed History response cannot replace a newer query after leaving and re
   await page.getByText('Development / demo network scenarios', { exact: true }).click();
   await select(page, 'multiple_pages', 'history');
   await page.getByRole('button', { name: 'Match History', exact: true }).click();
-  await expect(page.getByText(/Page 1 of 4.*18 results.*5 per page/)).toBeVisible();
+  await expect(page.getByText(/Page 1 of 3.*15 results.*5 per page/)).toBeVisible();
   const newer = await page.locator('tbody').innerText();
   await page.evaluate(() => Reflect.get(window, 'releaseHistory')());
   await expect.poll(() => page.evaluate(() => Reflect.get(window, 'historyReleased'))).toBe(true);
   await expect.poll(() => page.evaluate(() => Reflect.get(window, 'historyCanceled'))).toBe(true);
-  await expect(page.getByText(/Page 1 of 4.*18 results.*5 per page/)).toBeVisible();
+  await expect(page.getByText(/Page 1 of 3.*15 results.*5 per page/)).toBeVisible();
   await expect.poll(() => page.locator('tbody').innerText()).toBe(newer);
   await page.getByRole('button', { name: 'Next', exact: true }).click();
-  await expect(page.getByText(/Page 2 of 4.*18 results.*5 per page/)).toBeVisible();
+  await expect(page.getByText(/Page 2 of 3.*15 results.*5 per page/)).toBeVisible();
   await expect(page.locator('tbody')).not.toHaveText(newer);
 });

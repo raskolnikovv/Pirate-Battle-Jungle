@@ -1,3 +1,4 @@
+import { MENU_ASSET_MANIFEST } from '../src/game/assets/menuAssets';
 import { expect, test } from '@playwright/test';
 
 test('menu preserves navigation and keyboard focus', async ({ page }) => {
@@ -73,6 +74,14 @@ for (const [name, width, height] of [
 
 test('official button hover and pressed images keep the same slicing', async ({ page }) => {
   await page.goto('/');
+  // CSS pseudo-element images are lazy-loaded; a stable screenshot is not proof
+  // that its hovered/pressed texture has decoded. Keep the approved baselines.
+  await page.evaluate(async paths => {
+    await Promise.all(paths.map(async path => {
+      const image = new Image(); image.src = path; await image.decode();
+    }));
+  }, [MENU_ASSET_MANIFEST.primaryHover, MENU_ASSET_MANIFEST.primaryPressed,
+    MENU_ASSET_MANIFEST.secondary, MENU_ASSET_MANIFEST.secondaryPressed]);
   const button = page.getByRole('button', { name: 'Start Game', exact: true });
   await button.hover();
   await expect(button).toHaveScreenshot('primary-hover.png');

@@ -15,6 +15,8 @@ async function start(page: Page) {
     };
   });
   await page.getByRole('button', { name: 'Start Game', exact: true }).click();
+  // Asset decode/WebGL setup precedes the gameplay-ready assertions.
+  await page.locator('canvas').waitFor({ state: 'visible' });
   await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeEnabled();
   await page.evaluate(() => {
     const game = Reflect.get(window, 'arenaGame');
@@ -64,6 +66,8 @@ for (const [name, width, height] of [['desktop', 1280, 900], ['portrait', 390, 8
         && Reflect.get(window, 'islandSprites').every((sprite: { destroyed: boolean }) => sprite.destroyed)
         && Object.values(Reflect.get(window, 'arenaAssets')).every(asset => Reflect.get(asset as object, 'destroyed')))).toBe(true);
       await page.getByRole('button', { name: 'Start Game', exact: true }).click();
+      // Asset decode/WebGL setup precedes the gameplay-ready assertions.
+      await page.locator('canvas').waitFor({ state: 'visible' });
       await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeEnabled();
       await expect(canvas).toHaveCount(1);
       expect(errors).toEqual([]);

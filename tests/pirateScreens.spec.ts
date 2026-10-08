@@ -66,6 +66,8 @@ for (const [name, width, height] of [
       };
     });
     await page.getByRole('button', { name: 'Start Game', exact: true }).click();
+    // Asset decode/WebGL setup precedes the gameplay-ready assertions.
+    await page.locator('canvas').waitFor({ state: 'visible' });
     await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeEnabled();
     await page.getByRole('button', { name: 'Pause', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Game Paused' });
@@ -108,6 +110,8 @@ for (const [name, width, height] of [
     await expect(page.getByText('Registration: Submitted', { exact: true })).toBeVisible();
     await expect(page.getByText('The API confirmed this match in your history.')).toBeVisible();
     await page.getByRole('button', { name: 'Play Again', exact: true }).click();
+    // Asset decode/WebGL setup precedes the gameplay-ready assertions.
+    await page.locator('canvas').waitFor({ state: 'visible' });
     await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeEnabled();
     await page.getByRole('button', { name: 'Quit Match', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Pirate Battle' })).toBeVisible();

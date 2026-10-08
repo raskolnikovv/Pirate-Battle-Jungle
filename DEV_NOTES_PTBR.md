@@ -1954,6 +1954,56 @@ Pausa interrompe as sources de combate e oceano; pode tocar o sinal curto de pau
 
 **Limitação:** A origem e a licença da imagem fornecida não foram verificadas; guardar essa informação antes da entrega pública. Os baselines visuais anteriores do menu precisarão de revisão quando o novo visual for aprovado.
 
+### Etapa 46 — GPU nativa e representatividade do profiling
+
+**Status:** Concluído para medição nativa leve e revisão das evidências; três minutos de carga padrão/densa e diagnóstico de retenções continuam pendentes.
+
+**Responsável pela implementação:** Codex.
+
+**O que foi implementado:** Seleção opcional de navegador no harness, identificação WebGL do próprio canvas e CDP, verificação obrigatória de GPU quando solicitada e diretórios separados para evidências. Scripts reproduzem o diagnóstico de GPU e a comparação sem sobrescrever os JSONs históricos. Nenhuma regra de gameplay mudou.
+
+**Arquivos principais envolvidos:** `playwright.profile.config.ts`, `profiling/production.spec.ts`, `profiling/run.mjs`, `profiling/probe-gpu.mjs`, `profiling/compare.mjs`, `.gitignore`, `PERFORMANCE_REPORT.md` e JSONs de `profiling-results/`.
+
+**Como funciona / por que:** O lançamento padrão usava Headless Shell com `--use-angle=swiftshader-webgl`. O canal `chromium` usa o navegador completo; neste Windows ele identificou AMD Radeon via Direct3D11. Não basta pedir GPU ou conhecer o processador: verificamos o renderer real e os recursos WebGL/compositing. Metadados ausentes fazem a verificação falhar. O display do Windows está em 100 Hz; renders medidos não equivalem a ticks de simulação nem comprovam apresentação em Chrome visível.
+
+**Medições reais:** run nativo leve terminou por tempo com 180 segundos ativos / 180,0461 segundos reais, 99,99 FPS, p95 10,60 ms e máximos de 1 inimigo / 14 projéteis. Run padrão de spawn a cada 3 segundos morreu aos 112,4833 segundos ativos, com 100,00 FPS, p95 10,50 ms e máximos de 1 / 15. Run denso com intervalo válido de 1 segundo morreu aos 27,5667 segundos ativos, com 100,01 FPS, p95 10,60 ms e máximos de 3 / 12. As duas mortes são observações incompletas para três minutos; exit 0 do procedimento não transforma essas tentativas em cumprimento do requisito.
+
+**Decisão sobre carga:** O piloto mira o inimigo mais próximo e dispara pelas intenções normais de touch. Não existe limite de um inimigo no SpawnSystem; com intervalo de 15 segundos, ele eliminava cada alvo antes do próximo spawn. Comparações também incluem mudanças posteriores no build e variação de inputs reais, portanto não são um experimento isolado sobre GPU.
+
+**Cleanup e memória:** Cinco ciclos passaram com zero jogo/canvas/objetos Pixi/texturas próprias e vozes após saída; flags destroyed e estado limpo também foram conferidos. Heap pós-GC subiu de 8.118.772 para 9.152.188 bytes (+1.033.416), permanecendo 9.152.368 após cinco segundos ociosos. Há tendência repetida que merece comparação de heap snapshots e retaining paths; não foi identificado recurso específico vazando e não podemos declarar a diferença inofensiva. Um contexto e 17 buffers de áudio compartilhados são intencionais. O harness aguarda o som curto de navegação terminar antes de medir a saída.
+
+**O que preciso entender:** Estudar ANGLE/Direct3D versus software, interpretação de percentis, diferença entre throughput/render/presentation, overhead de trace e comparação de heap snapshots. Código dos scripts e análise produzidos pelo Codex precisam ser revisados antes da entrevista.
+
+**Como testar manualmente:** Seguir os comandos PowerShell e o procedimento Chrome DevTools em PERFORMANCE_REPORT.md. Usar `PROFILE_CHANNEL=chromium`, `PROFILE_REQUIRE_GPU=1` e diretório próprio. Medir Chrome visível e telefone separadamente; não transportar estes números para outro ambiente. Para memória, comparar snapshots após aquecimento e cinco ciclos, analisando caminhos de retenção.
+
+**Possíveis perguntas de entrevista:** Como comprovou GPU? “Pelo renderer WebGL do canvas e pelo CDP, não só pela flag.” O primeiro benchmark era representativo? “Era uma carga leve de sobrevivência; medi também spawn padrão e denso e registrei as mortes precoces.” O aumento do heap prova leak? “Não; os recursos observados foram destruídos, mas a tendência exige investigar referências retidas.”
+
+**Validação:** Quatro testes de profiling aprovados em três execuções (2 + 1 + 1). Typecheck, lint, build normal, sintaxe dos scripts e typecheck estrito separado do harness passaram; este último revelou dois acessos opcionais de CDP, corrigidos antes da aprovação. Build normal sem hook/chunk de profiling. Suíte E2E completa não reexecutada nesta tarefa. Avisos existentes de chunk >500 kB, NO_COLOR/FORCE_COLOR e arquivo de teste lento. Master Checklist intacto; sem commit ou push.
+
+### Etapa 47 — Estabilização da suíte completa após investigação de regressões
+
+**Status:** Concluído, incluindo suíte completa e repetição de estabilidade.
+
+**Responsável pela implementação:** Codex.
+
+**O que foi implementado:** Servidor exclusivo da suíte normal na porta 5175, dois workers locais e um no CI, profiling explicitamente desligado nesse servidor, espera por canvas antes das assertions de gameplay e decode das texturas de interação antes da captura visual. O teste de startup verifica que não existe hook nem request do módulo de profiling.
+
+**Arquivos principais envolvidos:** `playwright.config.ts`, `tests/app.spec.ts`, `tests/arenaVisuals.spec.ts`, `tests/mainMenu.spec.ts`, `tests/pirateScreens.spec.ts`, `tests/visualPolish.spec.ts`, README e este diário.
+
+**Causa e evidências:** O HTML original registrava 164 testes, 143 aprovados e 21 falhas, com seis workers. Vinte falhas envolveram timeouts (Pause desabilitado, navegação ou 16/17 buffers de áudio); a outra capturou o botão pressionado sem sua textura, com 16.950 pixels diferentes. Traces originais não carregaram profileSession e não registraram page-error. Reutilizar o servidor manual da porta 5173 também tornou a reprodução dependente de requests pendentes desse processo. Cinco casos representativos passaram sem mudar testes usando servidor próprio e dois workers; reproduzir seis workers no servidor próprio voltou a gerar timeouts generalizados, e a execução diagnóstica foi encerrada.
+
+**Como funciona / por que:** Limitar concorrência reduz a contenção de SwiftShader/WebGL e do servidor; usar servidor próprio evita herdar modo, HMR e estado de uma sessão manual. A primeira execução corrigida ficou em 163 aprovados e uma falha landscape. Seu trace mostrou assets levando cerca de 4,4 segundos, seguidos de setup do Pixi, sem erro de inicialização. A assertion de Pause estava assumindo que toda a fase de carregamento terminava em cinco segundos. Agora o teste aguarda o canvas com a espera normal de ação e mantém a assertion de Pause habilitado. Timeouts de teste/assertions, regras e baselines permanecem iguais. O decode das imagens torna a captura visual dependente da textura pronta, não apenas de dois screenshots semelhantes.
+
+**Isolamento:** Configuração normal continua em `tests/` e servidor dev 5175; profiling continua separado em `profiling/` e preview de produção 4173, com canal nativo opcional. O build normal foi inspecionado e não contém pirateProfile nem profileSession. Não houve alteração de gameplay, balanceamento ou evidências de performance anteriores.
+
+**O que preciso entender:** Estudar diferença entre teste instável e bug de aplicação, contenção de recursos, readiness assíncrono, decode de imagem e isolamento de servidor/browser context. Não aumentar timeouts ou substituir baselines como primeira resposta a uma falha.
+
+**Como testar manualmente:** Manter o servidor manual 5173 aberto e rodar `npm test`; a suíte deve usar seu próprio servidor 5175. Conferir menu, loading, Pause/Resume e Options no browser. Evitar profiling e regressão simultâneos, e não ocupar a porta de teste. Relatório completo em `playwright-report/index.html`; falhas originais e primeira execução parcial foram preservadas localmente em `profiling-results/attempts/regression-original/` e `regression-first-full/`, ignorados por Git.
+
+**Possíveis perguntas de entrevista:** Como identificou a causa? “Li traces e comparei as mesmas verificações com servidor exclusivo e diferentes níveis de concorrência.” Por que esperar canvas e depois Pause? “Carregamento é uma fase própria; depois verifico que o gameplay está realmente pronto, mantendo a assertion.” O profiling causou as falhas? “Não encontrei evidência disso; ele nem foi carregado nos traces e adicionei uma verificação explícita de isolamento.”
+
+**Validação:** Typecheck, lint, build normal e TypeScript estrito dos testes de startup/menu/config passaram. Suíte completa final: 164 aprovados em 5,6 minutos, sem retries ou falhas. Repetição dos 21 casos originais duas vezes: 42 execuções aprovadas em 3,8 minutos, sem retries ou falhas. Comando: `npm test -- --grep <títulos originais> --repeat-each=2 --output profiling-results/attempts/regression-stability-results --reporter=list`. Nenhuma imagem de baseline foi atualizada. Avisos existentes: bundle principal de 1.052,19 kB acima de 500 kB e NO_COLOR/FORCE_COLOR. Erros de assets simulados nos testes negativos são esperados. Sem alteração de Master Checklist; sem commit ou push.
+
 ## 5. Conceitos importantes para estudar
 
 ### Atualização da etapa 39 — Web Audio

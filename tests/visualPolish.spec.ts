@@ -27,6 +27,8 @@ for (const [name, width, height] of [['desktop', 1600, 1100], ['portrait', 390, 
     await page.getByRole('button', { name: 'Start Game', exact: true }).waitFor();
     await instrument(page);
     await page.getByRole('button', { name: 'Start Game', exact: true }).click();
+    // Asset decode/WebGL setup precedes the gameplay-ready assertions.
+    await page.locator('canvas').waitFor({ state: 'visible' });
     await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeEnabled();
     const canvas = (await page.locator('canvas').boundingBox())!;
     expect(canvas.width / canvas.height).toBeCloseTo(1.6, 1);
@@ -73,6 +75,8 @@ for (const [name, width, height] of [['desktop', 1600, 1100], ['portrait', 390, 
     await expect(page.getByRole('status')).toHaveText('Settings saved. They will apply to new matches.');
     await page.getByRole('button', { name: 'Back', exact: true }).click();
     await page.getByRole('button', { name: 'Start Game', exact: true }).click();
+    // Asset decode/WebGL setup precedes the gameplay-ready assertions.
+    await page.locator('canvas').waitFor({ state: 'visible' });
     await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeEnabled();
     const next = await page.evaluate(() => Reflect.get(Reflect.get(window, 'polishGame'), 'configSnapshot'));
     expect(next.sessionDuration).toBe(60);

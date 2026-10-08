@@ -111,6 +111,10 @@ npm run preview
 | `npm run lint`  | Run ESLint on `src/`                         |
 | `npm run test`  | Run Playwright E2E tests (starts dev server) |
 
+Playwright owns a separate Vite server on `127.0.0.1:5175`, with profiling disabled.
+Local regression runs default to two workers (one in CI) to avoid concurrent software-WebGL overload.
+A manual development server on port 5173 can remain open. Do not run profiling and regression tests simultaneously.
+
 ## High-Level Architecture
 
 ```

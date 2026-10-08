@@ -1,0 +1,17 @@
+{
+  "startedAt": "2026-10-08T15:24:41.244Z",
+  "endedAt": "2026-10-08T15:25:17.306Z",
+  "exitCode": 0,
+  "command": "npm run profile",
+  "arguments": [
+    "--grep",
+    "real production combat"
+  ],
+  "environment": {
+    "channel": "chromium",
+    "requireGpu": true,
+    "spawnSeconds": "1",
+    "allowEarlyExit": true,
+    "evidence": "profiling-results/native-gpu-dense"
+  }
+}

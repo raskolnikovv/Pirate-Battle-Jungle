@@ -1,0 +1,17 @@
+{
+  "startedAt": "2026-10-08T15:22:05.330Z",
+  "endedAt": "2026-10-08T15:24:19.260Z",
+  "exitCode": 0,
+  "command": "npm run profile",
+  "arguments": [
+    "--grep",
+    "real production combat"
+  ],
+  "environment": {
+    "channel": "chromium",
+    "requireGpu": true,
+    "spawnSeconds": "3",
+    "allowEarlyExit": true,
+    "evidence": "profiling-results/native-gpu-combat"
+  }
+}

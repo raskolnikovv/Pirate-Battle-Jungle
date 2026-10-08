@@ -21,3 +21,8 @@ test-results
 profiling-results/html/
 profiling-results/traces/
 profiling-results/attempts/
+
+# Profiling outputs for separately labeled environments.
+profiling-results/*/html/
+profiling-results/*/traces/
+profiling-results/*/attempts/

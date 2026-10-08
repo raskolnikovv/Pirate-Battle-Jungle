@@ -1,0 +1,61 @@
+{
+  "recordedAt": "2026-10-08T15:28:28.433568+00:00",
+  "commands": [
+    {
+      "command": "node profiling/probe-gpu.mjs",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run build:profile",
+      "exitCode": 0
+    },
+    {
+      "command": "PROFILE_CHANNEL=chromium PROFILE_REQUIRE_GPU=1 PROFILE_EVIDENCE_DIR=profiling-results/native-gpu npm run profile",
+      "exitCode": 0,
+      "passed": 2,
+      "durationReported": "6.1 minutes"
+    },
+    {
+      "command": "PROFILE_CHANNEL=chromium PROFILE_REQUIRE_GPU=1 PROFILE_EVIDENCE_DIR=profiling-results/native-gpu-combat PROFILE_SPAWN_SECONDS=3 PROFILE_ALLOW_EARLY_EXIT=1 npm run profile -- --grep 'real production combat'",
+      "exitCode": 0,
+      "passed": 1,
+      "durationReported": "2.2 minutes"
+    },
+    {
+      "command": "PROFILE_CHANNEL=chromium PROFILE_REQUIRE_GPU=1 PROFILE_EVIDENCE_DIR=profiling-results/native-gpu-dense PROFILE_SPAWN_SECONDS=1 PROFILE_ALLOW_EARLY_EXIT=1 npm run profile -- --grep 'real production combat'",
+      "exitCode": 0,
+      "passed": 1,
+      "durationReported": "35.1 seconds"
+    },
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run lint",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0
+    },
+    {
+      "command": "npx tsc --noEmit --skipLibCheck --strict --target ES2022 --module ESNext --moduleResolution Bundler --types node profiling/production.spec.ts playwright.profile.config.ts",
+      "initialExitCode": 2,
+      "initialErrors": "Two possibly undefined CDP featureStatus accesses; fixed with optional chaining. Missing metadata still fails GPU assertions.",
+      "exitCode": 0
+    },
+    {
+      "command": "node --check profiling/compare.mjs; node --check profiling/run.mjs; node --check profiling/probe-gpu.mjs",
+      "exitCode": 0
+    }
+  ],
+  "fullRegressionSuiteRun": false,
+  "normalBuildContainsProfilingApi": false,
+  "normalBuildContainsProfilingChunk": false,
+  "warnings": [
+    "Main normal production chunk 1052.19 kB exceeds 500 kB threshold",
+    "NO_COLOR ignored because FORCE_COLOR is set",
+    "Profiling test runner reports a slow test file; measurement is intentionally real-time"
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "date": "2026-10-08T15:28:28.654Z",
+  "nativeComplete180Seconds": true,
+  "combatComplete180Seconds": false,
+  "stressComplete180Seconds": false,
+  "nativeCanvasRenderer": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001636) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+  "combatCanvasRenderer": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001636) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+  "previousHeapDeltaBytes": 977500,
+  "nativeHeapDeltaBytes": 1033416,
+  "nativeIdleHeapBytes": 9152368,
+  "nativeFrameStatistics": {
+    "frameSamples": 17991,
+    "averageFps": 99.99255238618191,
+    "p95FrameMs": 10.599999999627471,
+    "p99FrameMs": 10.800000000745058,
+    "low1PercentFps": 92.59259258620492,
+    "minimumIntervalFps": 40.983606556751326
+  },
+  "combatFrameStatistics": {
+    "frameSamples": 11239,
+    "averageFps": 100.00195750784437,
+    "p95FrameMs": 10.5,
+    "p99FrameMs": 10.900000000372529,
+    "low1PercentFps": 91.74311926291955,
+    "minimumIntervalFps": 51.5463917515875
+  },
+  "stressFrameStatistics": {
+    "frameSamples": 2750,
+    "averageFps": 100.00545484299144,
+    "p95FrameMs": 10.600000001490116,
+    "p99FrameMs": 11.300000000745058,
+    "low1PercentFps": 88.49557521540405,
+    "minimumIntervalFps": 67.11409395805356
+  }
+}

@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react';
+import { pirateThemeStyle } from './pirateTheme';
+import './PirateUI.css';
 
 interface PauseDialogProps {
   paused: boolean;
@@ -18,11 +20,13 @@ export function PauseDialog({ paused, onResume }: PauseDialogProps) {
   }, [paused]);
 
   return (
-    <dialog ref={dialogRef} className="pause-dialog" aria-labelledby="pause-title"
+    <dialog ref={dialogRef} className="pause-dialog pirate-ui pirate-pause" style={pirateThemeStyle} aria-labelledby="pause-title"
       aria-describedby="pause-description" onCancel={(event) => event.preventDefault()}>
-      <h2 id="pause-title">Game Paused</h2>
-      <p id="pause-description">The match is frozen. Select Resume when you are ready to continue.</p>
-      <button ref={resumeRef} className="pause-action" onClick={onResume}>Resume</button>
+      <div className="menu-panel">
+        <h2 id="pause-title" className="pirate-title">Game Paused</h2>
+        <p id="pause-description">The match is frozen. Select Resume when you are ready to continue.</p>
+        <button ref={resumeRef} type="button" className="menu-button menu-button-primary" onClick={onResume}>Resume</button>
+      </div>
     </dialog>
   );
 }

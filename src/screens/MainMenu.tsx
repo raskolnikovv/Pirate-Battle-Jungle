@@ -1,32 +1,19 @@
-import type { CSSProperties } from 'react';
 import { NavButton } from '@/components/NavButton';
 import type { ScreenName } from '@/app/navigationTypes';
 import { PendingSubmissions } from '@/components/PendingSubmissions';
 import { NetworkScenarioControls } from '@/components/NetworkScenarioControls';
 import { MENU_ASSET_MANIFEST as assets } from '@/game/assets/menuAssets';
+import { pirateThemeStyle } from '@/components/pirateTheme';
+import '@/components/PirateUI.css';
 import './MainMenu.css';
 
 interface MainMenuProps {
   onNavigate: (screen: ScreenName) => void;
 }
 
-const menuStyle = {
-  '--menu-background': `url("${assets.background}")`,
-  '--menu-panel': `url("${assets.panel}")`,
-  '--menu-panel-slice': assets.panelSlice,
-  '--menu-primary': `url("${assets.primary}")`,
-  '--menu-primary-hover': `url("${assets.primaryHover}")`,
-  '--menu-primary-pressed': `url("${assets.primaryPressed}")`,
-  '--menu-secondary': `url("${assets.secondary}")`,
-  '--menu-secondary-pressed': `url("${assets.secondaryPressed}")`,
-  '--menu-button-slice': assets.buttonSlice,
-  '--menu-button-border-height-ratio': assets.buttonBorderHeightRatio,
-  '--menu-button-border-width-ratio': assets.buttonBorderWidthRatio,
-} as CSSProperties;
-
 export function MainMenu({ onNavigate }: MainMenuProps) {
   return (
-    <main className="main-menu" style={menuStyle}>
+    <main className="main-menu pirate-ui" style={pirateThemeStyle}>
       <div className="menu-panel">
         <header className="menu-heading">
           <h1><span className="menu-sr-only">Pirate Battle</span>

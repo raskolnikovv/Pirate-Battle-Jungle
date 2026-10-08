@@ -1,6 +1,5 @@
-import type { CSSProperties } from "react";
 import { NavButton } from "@/components/NavButton";
-import { ScreenLayout } from "@/components/ScreenLayout";
+import { PirateScreen } from "@/components/PirateScreen";
 import type { GameResultPayload, ScreenName } from "@/app/navigationTypes";
 import { useMatchRegistration } from "@/hooks/useApi";
 import { PendingSubmissions } from '@/components/PendingSubmissions';
@@ -12,29 +11,6 @@ interface ResultProps {
   storageError?: boolean;
 }
 
-const scoreCardStyle: CSSProperties = {
-  backgroundColor: "rgba(51, 65, 85, 0.5)",
-  borderRadius: 12,
-  padding: 24,
-  textAlign: "center",
-  marginBottom: 24,
-};
-
-const statCardStyle: CSSProperties = {
-  backgroundColor: "rgba(51, 65, 85, 0.5)",
-  borderRadius: 12,
-  padding: 20,
-  textAlign: "center",
-};
-
-const buttonRowStyle: CSSProperties = {
-  display: "flex",
-  justifyContent: "center",
-  gap: 16,
-  paddingTop: 16,
-  flexWrap: "wrap",
-};
-
 export function Result({ onNavigate, result, storageError = false }: ResultProps) {
   const { data: registration } = useMatchRegistration(result?.matchId);
   const registrationLabels = {
@@ -42,12 +18,11 @@ export function Result({ onNavigate, result, storageError = false }: ResultProps
     submitted: 'Submitted', failed: 'Submission failed',
   };
   if (!result) {
-    return <ScreenLayout title="Match Results">
+    return <PirateScreen title="Match Results">
       <p role="status">No completed match is available.</p>
-      <PendingSubmissions />
-      <NetworkScenarioControls />
-      <div style={buttonRowStyle}><NavButton onClick={() => onNavigate("main-menu")}>Main Menu</NavButton></div>
-    </ScreenLayout>;
+      <div className="menu-secondary-content"><PendingSubmissions /><NetworkScenarioControls /></div>
+      <div className="pirate-actions"><NavButton unstyled className="menu-button menu-button-primary" onClick={() => onNavigate("main-menu")}>Main Menu</NavButton></div>
+    </PirateScreen>;
   }
   const score = result.score;
   const enemiesDefeated = result.enemiesDefeated;
@@ -60,9 +35,9 @@ export function Result({ onNavigate, result, storageError = false }: ResultProps
   };
 
   return (
-    <ScreenLayout title="Match Results">
+    <PirateScreen title="Match Results">
       <div>
-        <div style={scoreCardStyle}>
+        <div className="result-score-card">
           <p style={{ fontSize: 18, color: "#cbd5e1", marginBottom: 8 }}>
             {reasonLabel[endReason]}
           </p>
@@ -76,27 +51,20 @@ export function Result({ onNavigate, result, storageError = false }: ResultProps
           >
             {score}
           </p>
-          <p style={{ color: "#94a3b8" }}>Final Score</p>
+          <p style={{ color: "#d9e3e6" }}>Final Score</p>
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-            gap: 16,
-            marginBottom: 16,
-          }}
-        >
-          <div style={statCardStyle}>
-            <p style={{ color: "#94a3b8", fontSize: 14, marginBottom: 4 }}>
+        <div className="result-stats">
+          <div className="result-stat-card">
+            <p style={{ color: "#d9e3e6", fontSize: 14, marginBottom: 4 }}>
               Enemies Defeated
             </p>
             <p style={{ fontSize: 32, fontWeight: 700, color: "#60a5fa" }}>
               {enemiesDefeated}
             </p>
           </div>
-          <div style={statCardStyle}>
-            <p style={{ color: "#94a3b8", fontSize: 14, marginBottom: 4 }}>
+          <div className="result-stat-card">
+            <p style={{ color: "#d9e3e6", fontSize: 14, marginBottom: 4 }}>
               Active Time Played
             </p>
             <p style={{ fontSize: 32, fontWeight: 700, color: "#4ade80" }}>
@@ -113,21 +81,18 @@ export function Result({ onNavigate, result, storageError = false }: ResultProps
           <p>Completed: <time dateTime={result.completedAt}>{new Date(result.completedAt).toLocaleString('en-US')}</time></p>
           {storageError && <p role="alert">Unable to save this result locally. It remains available until you reload.</p>}
         </section>
-        <PendingSubmissions />
-        <NetworkScenarioControls />
-        <div style={buttonRowStyle}>
-          <NavButton onClick={() => onNavigate("game")}>Play Again</NavButton>
-          <NavButton onClick={() => onNavigate("ranking")} variant="secondary">
+        <div className="menu-secondary-content"><PendingSubmissions /><NetworkScenarioControls /></div>
+        <div className="pirate-actions">
+          <NavButton unstyled className="menu-button menu-button-primary" onClick={() => onNavigate("game")}>Play Again</NavButton>
+          <NavButton unstyled className="menu-button menu-button-secondary" onClick={() => onNavigate("ranking")} variant="secondary">
             Ranking
           </NavButton>
-          <NavButton
-            onClick={() => onNavigate("main-menu")}
-            variant="secondary"
+          <NavButton unstyled className="menu-button menu-button-secondary" onClick={() => onNavigate("main-menu")} variant="secondary"
           >
             Main Menu
           </NavButton>
         </div>
       </div>
-    </ScreenLayout>
+    </PirateScreen>
   );
 }

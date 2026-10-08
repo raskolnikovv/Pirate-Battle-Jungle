@@ -1,0 +1,91 @@
+.menu-panel {
+  width: min(100%, 1060px);
+  min-width: 0;
+  padding: 16px 20px 20px;
+  border: solid transparent;
+  border-width: 24px 20px;
+  border-image: var(--menu-panel) var(--menu-panel-slice) / 24px 20px / 0 stretch;
+  background-color: #233544;
+  box-shadow: 0 12px 40px #0008;
+}
+.menu-button {
+  --menu-button-height: 64px;
+  --menu-button-image: var(--menu-primary);
+  --menu-button-border-y: calc(var(--menu-button-height) * var(--menu-button-border-height-ratio));
+  --menu-button-border-x: calc(var(--menu-button-height) * var(--menu-button-border-width-ratio));
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  min-width: 0;
+  height: var(--menu-button-height);
+  padding: 8px calc(var(--menu-button-border-x) + 4px);
+  background: transparent;
+  color: #322009;
+  font: inherit;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+/* A decorative layer keeps the label independent of the nine-slice borders.
+   All four corners use the same scale: CSS button height / sprite height. */
+.menu-button::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  border: solid transparent;
+  border-width: var(--menu-button-border-y) var(--menu-button-border-x);
+  border-image: var(--menu-button-image) var(--menu-button-slice) / var(--menu-button-border-y) var(--menu-button-border-x) / 0 stretch;
+}
+.menu-button-primary:hover { --menu-button-image: var(--menu-primary-hover); }
+.menu-button-primary:active { --menu-button-image: var(--menu-primary-pressed); }
+.menu-button-secondary { --menu-button-height: 56px; --menu-button-image: var(--menu-secondary); color: #fff1d2; font-size: 14px; }
+.menu-button-secondary:hover { filter: brightness(1.15); }
+.menu-button-secondary:active { --menu-button-image: var(--menu-secondary-pressed); }
+.pirate-ui button:focus-visible, .pirate-ui summary:focus-visible, .pirate-ui select:focus-visible { outline: 3px solid #ffdc72; outline-offset: 3px; }
+.menu-secondary-content { margin-top: 24px; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.menu-secondary-content details { background: #122431; }
+.menu-secondary-content summary { cursor: pointer; min-height: 44px; display: list-item; padding-block: 10px; color: #c8dae3; }
+.menu-secondary-content select { max-width: 100%; min-height: 44px; margin: 4px 0; color: #fff1d2; background: #233544; border: 1px solid #879aa2; border-radius: 4px; padding: 6px; font: inherit; }
+.menu-secondary-content button { min-height: 44px; max-width: 100%; }
+
+.pirate-screen {
+  min-height: 100dvh;
+  padding: max(24px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  display: grid;
+  place-items: center;
+  background: linear-gradient(#08273080, #082730a6), var(--menu-background) center / cover;
+  color: #fff1d2;
+  line-height: 1.6;
+}
+.pirate-screen .pirate-screen-panel { max-width: 768px; overflow-wrap: anywhere; }
+.pirate-title { font-family: Georgia, serif; font-size: clamp(26px, 5vw, 36px); color: #ffd17a; text-align: center; margin-bottom: 20px; }
+.pirate-ui .options-field input { min-height: 44px; background: #142936; border-color: #b4a27e; color: #fff1d2; }
+.pirate-ui .options-field label { color: #ffd17a; }
+.pirate-ui .options-field p { font-size: 14px; }
+.pirate-ui .options-form [role="status"] { color: #b9f0cb; }
+.pirate-ui .options-actions, .pirate-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 12px; padding-top: 16px; }
+.result-score-card { text-align: center; padding: 20px; margin-bottom: 16px; background: #122431cc; border: 1px solid #b4a27e; border-radius: 8px; }
+.result-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: 16px; margin-bottom: 16px; }
+.result-stat-card { text-align: center; padding: 16px; background: #122431cc; border-radius: 8px; }
+.pirate-ui .menu-secondary-content .pause-action { border: 1px solid #d1ac68; background: #dfb45f; color: #322009; white-space: normal; }
+.pirate-pause.pause-dialog {
+  width: min(460px, calc(100% - max(16px, env(safe-area-inset-left)) - max(16px, env(safe-area-inset-right))));
+  max-height: calc(100dvh - max(16px, env(safe-area-inset-top)) - max(16px, env(safe-area-inset-bottom)));
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #fff1d2;
+  overflow: auto;
+}
+.pirate-pause .menu-panel { width: 100%; }
+.pirate-pause .pirate-title { margin-bottom: 12px; }
+.pirate-pause::backdrop { background: #061e2be0; }
+@media (max-width: 480px) {
+  .pirate-screen { padding: max(12px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
+  .pirate-ui .menu-panel { border-width: 18px 14px; border-image-width: 18px 14px; padding: 8px 8px 16px; }
+  .pirate-ui .menu-button { --menu-button-height: 60px; font-size: 18px; }
+  .pirate-ui .menu-button-secondary { --menu-button-height: 56px; font-size: 13px; }
+}

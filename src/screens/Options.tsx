@@ -1,5 +1,5 @@
 import { useRef, useState, type FormEvent } from 'react';
-import { ScreenLayout } from '@/components/ScreenLayout';
+import { PirateScreen } from '@/components/PirateScreen';
 import type { ScreenName } from '@/app/navigationTypes';
 import { ENEMY_SPAWN_INTERVAL_LIMITS, SESSION_DURATION_LIMITS } from '@/config/gameConfig';
 import { loadGameOptions, saveGameOptions, validateGameOptions, type GameOptionsErrors } from '@/config/gameOptions';
@@ -41,7 +41,7 @@ export function Options({ onNavigate }: OptionsProps) {
   };
 
   return (
-    <ScreenLayout title="Options">
+    <PirateScreen title="Options">
       <form className="options-form" noValidate onSubmit={handleSave}>
         <p>Times are in seconds. Saved settings apply only to new matches.</p>
         <div className="options-field">
@@ -75,10 +75,10 @@ export function Options({ onNavigate }: OptionsProps) {
         <p role="status" aria-atomic="true">{message}</p>
         {storageError && <p className="options-error" role="alert">{storageError}</p>}
         <div className="options-actions">
-          <button className="pause-action" type="submit">Save</button>
-          <button className="pause-action" type="button" onClick={() => onNavigate('main-menu')}>Back</button>
+          <button className="menu-button menu-button-primary" type="submit">Save</button>
+          <button className="menu-button menu-button-secondary" type="button" onClick={() => onNavigate('main-menu')}>Back</button>
         </div>
       </form>
-    </ScreenLayout>
+    </PirateScreen>
   );
 }

@@ -1573,6 +1573,32 @@ O avanço usa `playerMovementSpeed × magnitude × deltaSeconds` pela proa atual
 - Por que não usar tamanho de fundo 100%? “Ele escala os dois eixos de forma independente e deforma a arte quando o botão muda de proporção.”
 - O que o nine-slice resolve? “Preserva os ornamentos dos cantos enquanto permite alongar o centro para acomodar o layout.”
 
+### Etapa 33 — Tema naval compartilhado em Options, Pause e Result
+
+**Status:** Concluído
+
+**Responsável pela implementação:** Codex; validação física e aprovação visual pelo desenvolvedor.
+
+**O que foi implementado:** Options e Result agora usam o cenário e o painel oficiais; Pause usa a mesma moldura sobre o gameplay. Botões principais dourados e secundários escuros reutilizam o 9-slice aprovado. Formulários e feedback têm contraste, foco e alvos de toque. As ações de pendências e cenários de rede continuam visíveis e funcionais em Result.
+
+**Arquivos principais envolvidos:** `PirateScreen.tsx`, `PirateUI.css`, `pirateTheme.ts`, `MainMenu.tsx`, `MainMenu.css`, `Options.tsx`, `PauseDialog.tsx`, `Result.tsx`, `pirateScreens.spec.ts` e nove baselines PNG. `NavButton`, os assets, Ranking e Match History não foram alterados nesta etapa.
+
+**Como funciona:** `PirateScreen` fornece apenas o layout visual; `pirateThemeStyle` centraliza variáveis derivadas do manifesto existente. O CSS comum do Main Menu foi extraído para `PirateUI.css`, mantendo a aparência aprovada. Reutilizamos o painel de 384×480 com bordas oficiais 40/32/40/32 e os botões retina 512×176 com os cortes já definidos na etapa anterior. A moldura e os botões não exigem novas bibliotecas.
+
+**Por que foi feito dessa forma:** Compartilhar o CSS evita três cópias da correção dos parafusos. `ScreenLayout` permanece intacto para não mudar Ranking/History. O diálogo nativo continua com `showModal`, foco inicial em Resume, bloqueio de Escape e cleanup; apenas o conteúdo e a apresentação mudaram. A rolagem interna permite acessar Resume em alturas pequenas.
+
+**O que eu preciso entender:** Separar componente visual de regras: Options continua validando 60–180s e 1–15s e salvando as mesmas opções; Pause continua suspendendo o loop e exigindo retomada explícita; Result só mostra confirmação após a API. Estudar herança de variáveis CSS, pseudo-elementos, foco do `dialog` e rolamento em telas pequenas. Implementação assistida pelo Codex; revisar antes da entrevista.
+
+**Como testar manualmente:** Em desktop e telefone nas duas orientações, salvar opções, recarregar e conferir valores; testar valores inválidos e foco no campo. Iniciar e pausar, aguardar, retomar e conferir ausência de avanço da simulação. Concluir por tempo e por derrota; conferir score/tempo/motivo. Usar cenário de erro no POST, confirmar mensagem de falha, trocar para Success e tentar novamente; somente depois deve aparecer Submitted. Conferir Play Again, Main Menu, Ranking e os controles de cenários. Quit mantém o comportamento anterior de abandono; nenhuma ação nova foi adicionada ao diálogo. Testar Tab/Enter, notch, teclado virtual e barras do navegador em telefone físico.
+
+**Testes/checks:** Typecheck, lint e build executados. Cinco novos fluxos Playwright cobrem defaults, limites inválidos, persistência, pausa com comparação do estado incluindo Maps, Escape bloqueado, resultado, retry e navegação. Nove capturas cobrem Options/Pause/Result em desktop, retrato e paisagem; dois tamanhos menores verificam acesso a controles e ausência de overflow. A regressão existente cobre toque, falhas de rede, ambos os motivos de conclusão e pendências. Baselines são Chromium/Windows; dados variáveis de data/ID são mascarados, mantendo estatísticas e Retry visíveis. Avisos preexistentes: bundle maior que 500kB e NO_COLOR/FORCE_COLOR.
+
+**Possíveis perguntas de entrevista:**
+
+- Por que extrair somente o tema? “As telas têm regras diferentes; compartilhei moldura, botões e cores sem juntar a lógica de formulário, pausa e envio.”
+- Mudar o visual do Pause muda o relógio? “Não. Quem suspende a simulação é Game/GameLoop; o diálogo só representa a pausa e envia a intenção de retomar.”
+- Quando o resultado aparece como registrado? “Após confirmação da API. Um resultado local ou pendente continua identificado como não confirmado.”
+
 ## 5. Conceitos importantes para estudar
 
 - **Contexto seguro e Service Worker:** HTTPS confiável ou localhost permite recursos que HTTP em IP LAN não oferece. HTTPS com certificado inválido ainda exige resolver a confiança no dispositivo.

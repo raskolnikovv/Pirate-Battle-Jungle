@@ -197,3 +197,19 @@ Publish normal `npm run build` output (`dist/`) on a static host with trusted HT
 Navigation uses React screen state, not path routes; only Result uses `#result`. Serve `index.html` for the root/SPA fallback, serving actual files first. Preserve `/mockServiceWorker.js` as JavaScript with adequate worker scope, `/assets/` and built module paths. Never rewrite the worker request to HTML.
 
 Paths are origin-absolute: **deploy at the domain root**. Subdirectory hosting needs coordinated path/base changes, not only Vite's base. Verify assets, gameplay, Ranking, History, submission/retry and refresh on the published origin. Include generated test reports and profiling evidence; ignored local reports are not present in a clean checkout.
+
+### Netlify publishing
+
+No Netlify plugin, functions, `netlify.toml` or `_redirects` file is required for the current app. Navigation keeps the root path and uses only the Result hash, so refreshing does not require path-route rewrites. If clean path routes are introduced later, reassess SPA rewrites. See [Netlify's Vite guide](https://docs.netlify.com/build/frameworks/framework-setup-guides/vite/).
+
+For Git-based publishing:
+
+1. Import the repository into Netlify and select the delivery branch.
+2. Use the repository root as the base directory, `npm run build` as the build command and `dist` as the publish directory.
+3. Set build environment `NODE_VERSION=22.23.2` (the tested version) and `VITE_PROFILING=false`. Leave `NODE_ENV` unset during dependency installation: Vite/TypeScript are devDependencies required to build. No API secrets are required. See [Netlify dependency configuration](https://docs.netlify.com/build/configure-builds/manage-dependencies/).
+4. Publish at the site's HTTPS origin root. Preserve the entire `dist` output; do not upload only `index.html` or only `public`.
+5. On the published URL, check `/mockServiceWorker.js` returns JavaScript, then test Start Game, Ranking, Match History, completion/submission and refresh on `/#result`. Also test pending/retry and a physical phone on that origin. Records from localhost will not transfer to the new origin.
+
+Alternatively, run `npm ci` and `npm run build` locally, then use Netlify's manual deploy to upload the complete `dist` folder. Manual deployment does not execute a build command; see [Netlify deploy documentation](https://docs.netlify.com/deploy/create-deploys/).
+
+Local readiness verification used Windows, Node 22.23.2 / npm 11.12.1 and a fresh archive of revision `ec47e8f`: locked installation and production build passed without existing node_modules/dist. All 520 tracked public files, including the worker, were copied unchanged; all 66 referenced asset paths were present. Chromium verified MSW Ranking/History, a natural 60-active-second keyboard-played match with automatic POST 201, refresh persistence and idempotent POST 200 without duplication. The fresh-checkout build also passed a separate browser smoke check, replaying that completed-match payload. No uncaught page errors occurred. This verifies local production preview, not a remote Netlify/Linux build or published HTTPS site. The existing large-chunk warning remains; no deployment was performed.

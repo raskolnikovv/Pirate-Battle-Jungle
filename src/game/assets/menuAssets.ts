@@ -1,6 +1,8 @@
 // Paths and logical panel borders inspected in spritesheet/ui_sheet.json.
 export const MENU_ASSET_MANIFEST = {
   background: '/assets/ui_scene_background.png',
+  // Background supplied by the project owner for the Main Menu only.
+  mainMenuBackground: '/assets/main-menu-background.png',
   panel: '/assets/png/default/ui/menu/panel_menu.png',
   title: '/assets/png/retina/ui/menu/title_pirate_battle.png',
   primary: '/assets/png/retina/ui/menu/button_primary_normal.png',

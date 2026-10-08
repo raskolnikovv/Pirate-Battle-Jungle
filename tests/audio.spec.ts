@@ -1,3 +1,4 @@
+import { AUDIO_ASSETS } from '../src/audio/audioAssets';
 import { expect, test, type Page } from '@playwright/test';
 
 async function fakeAudio(page: Page) {
@@ -17,7 +18,7 @@ async function fakeAudio(page: Page) {
       decodeAudioData(data: ArrayBuffer) { return Promise.resolve({ bytes: data.byteLength }); }
       createBufferSource() {
         const source = { buffer: null, loop: false, onended: null, started: false, stopped: false, disconnected: false,
-          connect() {}, start() { this.started = true; }, stop() { this.stopped = true; },
+          output: null as object | null, connect(output: object) { this.output = output; }, start() { this.started = true; }, stop() { this.stopped = true; },
           disconnect() { this.disconnected = true; } };
         state.sources.push(source); return source;
       }
@@ -35,7 +36,7 @@ async function expose(page: Page) {
 }
 
 async function loaded(page: Page) {
-  await expect.poll(() => page.evaluate(() => Reflect.get(Reflect.get(window, 'manager'), 'buffers').size)).toBe(12);
+  await expect.poll(() => page.evaluate(() => Reflect.get(Reflect.get(window, 'manager'), 'buffers').size)).toBe(Object.keys(AUDIO_ASSETS).length);
 }
 
 test('accessible audio controls persist mute and independent volumes after refresh', async ({ page }) => {
@@ -191,7 +192,7 @@ test('real keyboard combat routes one sound per cannon action, impacts and destr
   expect(await page.evaluate(() => Reflect.get(window, 'sounds').length)).toBe(before);
   await page.getByRole('button', { name: 'Resume', exact: true }).click();
   await page.getByRole('button', { name: 'Quit Match', exact: true }).click();
-  expect(await page.evaluate(() => Reflect.get(Reflect.get(window, 'manager'), 'voices').size)).toBe(0);
+  expect(await page.evaluate(() => [...Reflect.get(Reflect.get(window, 'manager'), 'voices')].filter(voice => !voice.name.startsWith('ui')).length)).toBe(0);
   await page.getByRole('button', { name: 'Start Game', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeEnabled();
   expect(await page.evaluate(() => Reflect.get(window, 'sounds').filter((name: string) => name === 'start').length)).toBe(1);
@@ -209,6 +210,164 @@ test('native Web Audio decodes official WAVs after gesture without duplicate Str
   await page.getByRole('button', { name: 'Resume', exact: true }).click();
   expect(await page.evaluate(() => Reflect.get(Reflect.get(window, 'manager'), 'ocean').loop)).toBe(true);
   await page.getByRole('button', { name: 'Quit Match', exact: true }).click();
-  expect(await page.evaluate(() => Reflect.get(Reflect.get(window, 'manager'), 'voices').size)).toBe(0);
+  expect(await page.evaluate(() => [...Reflect.get(Reflect.get(window, 'manager'), 'voices')].filter(voice => !voice.name.startsWith('ui')).length)).toBe(0);
   expect(errors).toEqual([]);
+});
+
+
+async function uiNames(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const manager = Reflect.get(window, 'manager');
+    return Reflect.get(window, 'audioTest').sources.filter((source: { started: boolean }) => source.started)
+      .map((source: { buffer: object }) => [...Reflect.get(manager, 'buffers')]
+        .find((entry: [string, object]) => entry[1] === source.buffer)?.[0])
+      .filter((name: string | undefined) => name?.startsWith('ui'));
+  });
+}
+async function clearUiObservations(page: Page) {
+  await page.evaluate(() => {
+    const state = Reflect.get(window, 'audioTest');
+    for (const source of state.sources) source.onended?.();
+    state.sources.length = 0;
+  });
+}
+
+test('official UI feedback routes mouse, keyboard and details actions exactly once', async ({ page }) => {
+  await fakeAudio(page); await page.goto('/'); await expose(page);
+  await page.getByRole('button', { name: 'Options', exact: true }).click(); await loaded(page);
+  await clearUiObservations(page);
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  expect((await uiNames(page)).filter(name => name === 'uiBack')).toHaveLength(1);
+  await clearUiObservations(page); await page.mouse.move(0, 0);
+  const options = page.getByRole('button', { name: 'Options', exact: true });
+  await options.hover();
+  expect(await uiNames(page)).toEqual(['uiHover']);
+  // Moving between children stays within the same button, without another hover cue.
+  await options.evaluate(button => {
+    const child = document.createElement('span'); child.setAttribute('aria-hidden', 'true'); button.append(child);
+    child.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse', relatedTarget: button }));
+    child.remove();
+  });
+  expect(await uiNames(page)).toEqual(['uiHover']);
+  await options.click();
+  expect(await uiNames(page)).toEqual(['uiHover', 'uiOpen']);
+  await clearUiObservations(page);
+  await page.getByRole('button', { name: 'Back', exact: true }).focus(); await page.keyboard.press('Space');
+  expect(await uiNames(page)).toEqual(['uiBack']);
+  await clearUiObservations(page);
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: 'Start Game', exact: true })).toBeFocused();
+  expect(await uiNames(page)).toEqual(['uiHover']);
+  await page.keyboard.press('Tab'); await expect(options).toBeFocused();
+  expect(await uiNames(page)).toEqual(['uiHover', 'uiHover']);
+  await page.keyboard.press('Enter');
+  expect((await uiNames(page)).filter(name => name === 'uiOpen')).toHaveLength(1);
+  await page.getByRole('button', { name: 'Back', exact: true }).click(); await clearUiObservations(page);
+  const summary = page.locator('summary').filter({ hasText: 'Development / demo network scenarios' });
+  await summary.click(); await summary.click();
+  const names = await uiNames(page);
+  expect(names.filter(name => name === 'uiOpen')).toHaveLength(1);
+  expect(names.filter(name => name === 'uiClose')).toHaveLength(1);
+  expect(await page.evaluate(() => Reflect.get(window, 'audioTest').contexts)).toBe(1);
+});
+
+test('UI feedback respects autoplay, mute, effects volume, overlap and silent touch controls', async ({ page }) => {
+  await fakeAudio(page); await page.goto('/'); await expose(page);
+  await page.getByRole('button', { name: 'Options', exact: true }).hover();
+  expect(await page.evaluate(() => Reflect.get(window, 'audioTest').contexts)).toBe(0);
+  expect(await uiNames(page)).toEqual([]);
+  await page.getByRole('button', { name: 'Options', exact: true }).click(); await loaded(page);
+  await clearUiObservations(page);
+  await page.getByRole('button', { name: 'Mute audio', exact: true }).click();
+  await clearUiObservations(page);
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  expect(await uiNames(page)).toEqual([]);
+  await page.getByRole('button', { name: 'Unmute audio', exact: true }).click();
+  expect(await uiNames(page)).toEqual(['uiClick']);
+  expect(await page.evaluate(() => {
+    const manager = Reflect.get(window, 'manager'); const gain = Reflect.get(manager, 'uiGain');
+    return { gain: gain.gain.value, shared: Reflect.get(window, 'audioTest').sources.at(-1).output === gain };
+  })).toEqual({ gain: 0.4, shared: true });
+  const volume = page.getByLabel('Sound effects volume');
+  await volume.focus(); await page.keyboard.press('Home'); await clearUiObservations(page);
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  expect(await uiNames(page)).toEqual([]);
+  await volume.focus(); await page.keyboard.press('ArrowRight'); await clearUiObservations(page);
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  expect((await uiNames(page)).filter(name => name === 'uiClick')).toHaveLength(1);
+  expect(await page.evaluate(() => Reflect.get(Reflect.get(window, 'manager'), 'effects').gain.value)).toBe(0.05);
+  await clearUiObservations(page);
+  const bounded = await page.evaluate(() => {
+    const manager = Reflect.get(window, 'manager');
+    for (let i = 0; i < 30; i++) manager.playUi('uiHover');
+    const before = Reflect.get(manager, 'voices').size; manager.playUi('uiClick');
+    return { before, after: Reflect.get(manager, 'voices').size,
+      latest: [...Reflect.get(manager, 'voices')].at(-1).name };
+  });
+  expect(bounded).toEqual({ before: 2, after: 1, latest: 'uiClick' });
+  await clearUiObservations(page);
+  await page.evaluate(() => {
+    const touch = document.createElement('section'); touch.className = 'touch-controls';
+    const button = document.createElement('button'); touch.append(button); document.body.append(touch);
+    button.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'touch' })); button.click();
+    touch.remove();
+  });
+  expect(await uiNames(page)).toEqual([]);
+});
+
+test('UI listener cleanup prevents duplicate callbacks after reattachment', async ({ page }) => {
+  await page.goto('/'); await page.getByRole('button', { name: 'Options', exact: true }).waitFor();
+  const result = await page.evaluate(async () => {
+    const path = performance.getEntriesByType('resource').find(entry => entry.name.includes('/src/audio/uiSounds.ts'))!.name;
+    const { attachUiSounds } = await import(path);
+    const events: string[] = []; const audio = { playUi: (name: string) => events.push(name) };
+    const button = document.createElement('button'); document.body.append(button);
+    const detach = attachUiSounds(audio); button.click(); detach(); button.click();
+    const afterDetach = events.length;
+    const detachAgain = attachUiSounds(audio); button.click(); detachAgain(); button.click();
+    button.remove();
+    return { afterDetach, events };
+  });
+  expect(result).toEqual({ afterDetach: 1, events: ['uiClick', 'uiClick'] });
+});
+
+
+test.describe('touch UI feedback', () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  test('tap navigation plays one cue without hover and preserves Pause Resume sounds', async ({ page }) => {
+    await fakeAudio(page); await page.goto('/'); await expose(page);
+    await page.getByRole('button', { name: 'Options', exact: true }).tap(); await loaded(page);
+    await clearUiObservations(page);
+    await page.getByRole('button', { name: 'Back', exact: true }).tap();
+    expect(await uiNames(page)).toEqual(['uiBack']);
+    await clearUiObservations(page);
+    await page.getByRole('button', { name: 'Start Game', exact: true }).tap();
+    await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeEnabled();
+    expect(await uiNames(page)).toEqual(['uiClick']);
+    await clearUiObservations(page);
+    await page.getByRole('button', { name: 'Pause', exact: true }).tap();
+    expect(await uiNames(page)).toEqual([]);
+    expect(await page.evaluate(() => {
+      const manager = Reflect.get(window, 'manager');
+      return Reflect.get(window, 'audioTest').sources.filter((source: { buffer: object }) =>
+        source.buffer === Reflect.get(manager, 'buffers').get('pause')).length;
+    })).toBe(1);
+    await clearUiObservations(page);
+    await page.getByRole('dialog').getByRole('button', { name: 'Options', exact: true }).tap();
+    expect(await uiNames(page)).toEqual(['uiOpen']);
+    await clearUiObservations(page);
+    await page.getByRole('button', { name: 'Back', exact: true }).tap();
+    expect(await uiNames(page)).toEqual(['uiClose']);
+    await clearUiObservations(page);
+    await page.getByRole('button', { name: 'Resume', exact: true }).tap();
+    await expect(page.locator('canvas')).toBeFocused();
+    expect(await uiNames(page)).toEqual([]);
+    expect(await page.evaluate(() => {
+      const manager = Reflect.get(window, 'manager');
+      return Reflect.get(window, 'audioTest').sources.filter((source: { buffer: object }) =>
+        source.buffer === Reflect.get(manager, 'buffers').get('resume')).length;
+    })).toBe(1);
+    await page.getByRole('button', { name: 'Quit Match', exact: true }).tap();
+    expect(await uiNames(page)).toEqual(['uiBack']);
+  });
 });

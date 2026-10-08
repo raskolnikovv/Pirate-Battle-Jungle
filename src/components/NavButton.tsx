@@ -1,3 +1,4 @@
+import type { UiSoundAction } from '@/audio/audioAssets';
 import type { ReactNode, CSSProperties } from "react";
 
 export interface NavButtonProps {
@@ -6,6 +7,7 @@ export interface NavButtonProps {
   variant?: "primary" | "secondary";
   className?: string;
   unstyled?: boolean;
+  sound?: UiSoundAction;
 }
 
 const baseStyle: CSSProperties = {
@@ -35,12 +37,14 @@ export function NavButton({
   variant = "primary",
   className,
   unstyled = false,
+  sound = 'click',
 }: NavButtonProps) {
   const style = variant === "primary" ? primaryStyle : secondaryStyle;
 
   return (
     <button
       type="button"
+      data-ui-sound={sound}
       className={className}
       onClick={onClick}
       style={unstyled ? undefined : style}

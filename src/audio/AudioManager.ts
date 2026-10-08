@@ -1,13 +1,15 @@
-import { AUDIO_ASSETS, type SoundName } from './audioAssets';
+import { attachUiSounds } from './uiSounds';
+import { AUDIO_ASSETS, type SoundName, type UiSoundName } from './audioAssets';
 import { AUDIO_STORAGE_KEY, loadAudioPreferences, validAudioPreferences, type AudioPreferences } from './audioPreferences';
 
-interface Voice { source: AudioBufferSourceNode; session: boolean }
+interface Voice { source: AudioBufferSourceNode; session: boolean; name: SoundName }
 
 // Shared across screens. No gameplay state, animation loop or queued combat sounds.
 export class AudioManager {
   private context: AudioContext | null = null;
   private effects: GainNode | null = null;
   private ambience: GainNode | null = null;
+  private uiGain: GainNode | null = null;
   private readonly buffers = new Map<SoundName, AudioBuffer>();
   private readonly voices = new Set<Voice>();
   private ocean: AudioBufferSourceNode | null = null;
@@ -48,6 +50,7 @@ export class AudioManager {
   }
 
   attach(): () => void {
+    const detachUiSounds = attachUiSounds(this);
     const unlock = (event: Event) => { if (event.isTrusted) this.unlock(); };
     const silence = () => {
       this.stopVoices(); this.stopOcean();
@@ -59,6 +62,7 @@ export class AudioManager {
     window.addEventListener('blur', silence);
     document.addEventListener('visibilitychange', visibility);
     return () => {
+      detachUiSounds();
       window.removeEventListener('pointerdown', unlock, true);
       window.removeEventListener('keydown', unlock, true);
       window.removeEventListener('blur', silence);
@@ -78,6 +82,9 @@ export class AudioManager {
         this.context = new AudioContext();
         this.effects = this.context.createGain();
         this.ambience = this.context.createGain();
+        this.uiGain = this.context.createGain();
+        this.uiGain.gain.value = 0.4;
+        this.uiGain.connect(this.effects);
         this.effects.connect(this.context.destination);
         this.ambience.connect(this.context.destination);
         this.applyVolumes();
@@ -128,11 +135,25 @@ export class AudioManager {
     if (this.voices.size >= 12) return;
     const source = context.createBufferSource();
     source.buffer = buffer;
-    source.connect(this.effects);
-    const voice = { source, session };
+    source.connect(name.startsWith('ui') && this.uiGain ? this.uiGain : this.effects);
+    const voice = { source, session, name };
     this.voices.add(voice);
     source.onended = () => { source.disconnect(); this.voices.delete(voice); };
     source.start();
+  }
+
+  playUi(name: UiSoundName): void {
+    const uiVoices = [...this.voices].filter(voice => voice.name.startsWith('ui'));
+    // Keep UI overlap bounded. An activation takes priority over a previous hover.
+    for (const voice of uiVoices) {
+      if (name !== 'uiHover' && voice.name === 'uiHover') this.stopVoice(voice);
+    }
+    const remaining = uiVoices.filter(voice => this.voices.has(voice));
+    if (remaining.length >= 2) {
+      if (name === 'uiHover') return;
+      this.stopVoice(remaining[0]);
+    }
+    this.play(name, false);
   }
 
   private playStart(): void {
@@ -141,7 +162,7 @@ export class AudioManager {
   }
 
   start(): void {
-    this.stopVoices(); this.stopOcean(); this.active = true; this.pendingStart = true;
+    this.stopVoices(false, true); this.stopOcean(); this.active = true; this.pendingStart = true;
     this.syncOcean(); this.playStart();
   }
   pause(): void {
@@ -175,11 +196,15 @@ export class AudioManager {
     this.ocean.stop(); this.ocean.disconnect(); this.ocean = null;
   }
 
-  private stopVoices(sessionOnly = false): void {
+  private stopVoice(voice: Voice): void {
+    voice.source.onended = null;
+    voice.source.stop(); voice.source.disconnect(); this.voices.delete(voice);
+  }
+
+  private stopVoices(sessionOnly = false, preserveUi = false): void {
     for (const voice of this.voices) {
-      if (sessionOnly && !voice.session) continue;
-      voice.source.onended = null;
-      voice.source.stop(); voice.source.disconnect(); this.voices.delete(voice);
+      if ((sessionOnly && !voice.session) || (preserveUi && voice.name.startsWith('ui'))) continue;
+      this.stopVoice(voice);
     }
   }
 
@@ -188,6 +213,7 @@ export class AudioManager {
     this.loadController?.abort(); this.loadController = null;
     const context = this.context;
     this.context = null; this.effects?.disconnect(); this.ambience?.disconnect();
+    this.uiGain?.disconnect(); this.uiGain = null;
     this.effects = null; this.ambience = null; this.buffers.clear(); this.loading = null;
     if (context && context.state !== 'closed') void context.close().catch(() => {});
   }

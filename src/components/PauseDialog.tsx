@@ -49,13 +49,13 @@ export function PauseDialog({ paused, onResume, onQuit }: PauseDialogProps) {
         <p id="pause-description">{showOptions ? 'The current match stays paused. Audio and display changes apply immediately.' : 'The match is frozen. Select Resume when you are ready to continue.'}</p>
         {showOptions ? <div ref={optionsRef}><OptionsForm context="match" onBack={() => setShowOptions(false)} /></div> :
           <div className="pause-navigation">
-            <button ref={resumeRef} type="button" className="menu-button menu-button-primary" onClick={() => {
+            <button data-ui-sound="none" ref={resumeRef} type="button" className="menu-button menu-button-primary" onClick={() => {
               // Close first: native dialog focus restoration must finish before focusing the arena.
               dialogRef.current?.close();
               onResume();
             }}>Resume</button>
-            <button type="button" className="menu-button menu-button-primary" onClick={() => setShowOptions(true)}>Options</button>
-            <button type="button" className="menu-button menu-button-secondary" onClick={onQuit}>Main Menu</button>
+            <button type="button" className="menu-button menu-button-primary" data-ui-sound="open" onClick={() => setShowOptions(true)}>Options</button>
+            <button type="button" className="menu-button menu-button-secondary" data-ui-sound="back" onClick={onQuit}>Main Menu</button>
           </div>}
       </div>
     </dialog>

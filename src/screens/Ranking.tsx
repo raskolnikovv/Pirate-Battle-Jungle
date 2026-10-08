@@ -117,7 +117,7 @@ export function Ranking({ onNavigate }: RankingProps) {
         <div
           style={{ display: "flex", justifyContent: "center", paddingTop: 24 }}
         >
-          <NavButton unstyled className="menu-button menu-button-primary" onClick={() => onNavigate("main-menu")}>Back</NavButton>
+          <NavButton unstyled className="menu-button menu-button-primary" sound="back" onClick={() => onNavigate("main-menu")}>Back</NavButton>
         </div>
       </div>
     </PirateScreen>

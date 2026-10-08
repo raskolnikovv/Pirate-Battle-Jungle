@@ -25,10 +25,10 @@ export function MainMenu({ onNavigate }: MainMenuProps) {
         <div className="menu-content">
           <nav className="menu-navigation" aria-label="Main navigation">
             <NavButton unstyled className="menu-button menu-button-primary" onClick={() => onNavigate('game')}>Start Game</NavButton>
-            <NavButton unstyled className="menu-button menu-button-primary" onClick={() => onNavigate('options')}>Options</NavButton>
+            <NavButton unstyled className="menu-button menu-button-primary" sound="open" onClick={() => onNavigate('options')}>Options</NavButton>
             <div className="menu-record-buttons">
-              <NavButton unstyled className="menu-button menu-button-secondary" onClick={() => onNavigate('ranking')}>Ranking</NavButton>
-              <NavButton unstyled className="menu-button menu-button-secondary" onClick={() => onNavigate('match-history')}>Match History</NavButton>
+              <NavButton unstyled className="menu-button menu-button-secondary" sound="open" onClick={() => onNavigate('ranking')}>Ranking</NavButton>
+              <NavButton unstyled className="menu-button menu-button-secondary" sound="open" onClick={() => onNavigate('match-history')}>Match History</NavButton>
             </div>
           </nav>
           <section className="menu-instructions" aria-labelledby="menu-controls-title">

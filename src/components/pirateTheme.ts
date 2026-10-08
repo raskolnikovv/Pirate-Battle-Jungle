@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react';
 import { MENU_ASSET_MANIFEST as assets } from '@/game/assets/menuAssets';
 
 export const pirateThemeStyle = {
+  '--main-menu-background': `url("${assets.mainMenuBackground}")`,
   '--menu-background': `url("${assets.background}")`,
   '--menu-panel': `url("${assets.panel}")`,
   '--menu-panel-slice': assets.panelSlice,

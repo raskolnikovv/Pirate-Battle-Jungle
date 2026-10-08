@@ -1905,6 +1905,55 @@ Pausa interrompe as sources de combate e oceano; pode tocar o sinal curto de pau
 
 **Validação:** profiling com dois testes aprovados em 4,3 minutos; typecheck, lint e build normal aprovados. Suíte completa: 160 testes aprovados em 5,2 minutos, sem falhas; relatório HTML em playwright-report/index.html. Permanecem avisos de bundle >500 kB e NO_COLOR/FORCE_COLOR. O build normal foi inspecionado e não contém pirateProfile nem chunk profileSession. Tentativas anteriores: startup excedeu a espera inicial, morte aos 52/151 segundos e erro da primeira asserção que media o início do piloto em vez do início da sessão. Essas tentativas não foram tratadas como aprovação; JSONs/traces foram preservados e o procedimento corrigido foi reexecutado integralmente. Master Checklist não alterado; sem commit/push.
 
+### Etapa 44 — Sons oficiais de interface
+
+**Status:** Concluído.
+
+**Responsável pela implementação:** Codex.
+
+**O que foi implementado:** ui_click.wav, ui_hover.wav, ui_back.wav, ui_open.wav e ui_close.wav no manifesto central. Botões comuns, navegação, checkbox e painéis details recebem feedback; mouse usa hover e Tab/Shift+Tab usam foco. Toque recebe ativação sem hover. Pause/Resume mantêm seus sons próprios; joystick/ataques não recebem sons de menu.
+
+**Arquivos principais envolvidos:** audioAssets, AudioManager, uiSounds, NavButton, PauseDialog, telas MainMenu/Options/Ranking/MatchHistory/Result/Game, audio.spec.ts e este diário.
+
+**Como funciona / por que:** um conjunto de listeners delegados acompanha as telas pelo mesmo attach/cleanup do áudio, incluindo Strict Mode. data-ui-sound indica click/back/open/close/none sem inferir ação pelo texto do botão. Click é tratado depois do handler React para respeitar mute e permitir que a navegação termine seu cleanup antes de iniciar o feedback. Abertura/fechamento de details usa o estado nativo anterior ao toggle. Hover ignora movimentos entre filhos do mesmo botão e a troca de tela sob cursor parado; foco programático não produz som de Tab. Nenhum handler interfere com preventDefault, foco ou simulação.
+
+**Mixagem e lifecycle:** um GainNode reutilizado reduz a UI a 40% do volume de efeitos configurado, sem alterar o ganho dos canhões. UI limita sobreposição a duas vozes dentro do limite global de 12; ativação substitui hover pendente. O início da partida preserva a cauda curta de feedback da UI, encerrando áudio antigo do combate/resultado. Mute, volume zero, blur e dispose silenciam os sons; unmount remove listeners e desconecta o ganho. Os cinco buffers adicionais são carregados uma vez após gesto confiável, totalizando 17 WAVs em cache.
+
+**O que preciso entender:** delegação/bubbling, foco de teclado versus toque, evento click nativo por Space/Enter, ganho encadeado e término de AudioBufferSourceNode. Revisar o código gerado pelo Codex, especialmente a ordem React → cleanup → feedback e os testes que identificam buffers realmente reproduzidos.
+
+**Como testar manualmente:** clicar uma vez para desbloquear áudio; navegar por mouse, Tab/Shift+Tab e Enter/Space. Conferir sons de Options/Back, Save, Ranking/History e painéis de detalhes; testar mute e volume zero. No celular, tocar menu e abrir/fechar Options na pausa, sem hover extra. Resume deve devolver foco à arena imediatamente, com apenas game_resume. Ouvir contraste/volume em fone e alto-falante reais.
+
+**Limitações:** o primeiro gesto pode não soar enquanto ocorre desbloqueio/decode; não enfileiramos feedback atrasado nem tentamos autoplay em hover. Sons confirmam interação, não sucesso de API/validação. Renderização/performance medidas na etapa 43 descrevem o build anterior; não foram refeitas aqui. Qualidade subjetiva e Safari/aparelho físico continuam manuais.
+
+**Possíveis perguntas de entrevista:**
+- Por que usar listeners delegados? “As telas mudam, mas os mesmos poucos listeners reconhecem controles sem cadastrar um handler por botão.”
+- Por que som de UI usa o volume de efeitos? “É um efeito; o ganho extra só torna o feedback mais discreto sem mudar a preferência salva.”
+- Por que o primeiro hover pode ser silencioso? “O navegador exige gesto confiável e buffers prontos; não acumulamos sons para tocar depois.”
+
+**Validação:** typecheck, lint e build aprovados; 22 testes focados aprovados em 1,4 min (audio.spec, optionsFps.spec e pirateScreens.spec), incluindo quatro testes novos de UI. Mantidas baselines existentes. Suíte completa e profiling não reexecutados nesta etapa; os resultados anteriores continuam históricos. Permanecem avisos de bundle >500 kB (principal aproximadamente 1.052,08 kB) e NO_COLOR/FORCE_COLOR. Sem mudança de gameplay, regras, API, Master Checklist, commit ou push.
+
+### Etapa 45 — Novo fundo exclusivo do menu principal
+
+**Status:** Concluído
+
+**Responsável pela implementação:** Codex, usando a imagem fornecida pelo usuário.
+
+**O que foi implementado:** A imagem de batalha naval enviada pelo usuário agora é o fundo somente do Main Menu. As demais telas continuam com o fundo oficial anterior.
+
+**Arquivos principais envolvidos:** `public/assets/main-menu-background.png`, `menuAssets.ts`, `pirateTheme.ts` e `MainMenu.css`.
+
+**Como funciona e por que:** O caminho fica no manifesto centralizado e chega ao CSS por uma variável exclusiva do menu principal. `background-size: cover` preenche a tela sem deformar a imagem; pode recortar as laterais em telas estreitas. A camada escura existente e os painéis preservam a legibilidade. A imagem original foi copiada sem edição.
+
+**O que eu preciso entender:** Revisar variáveis CSS, proporção de imagens e a diferença entre `cover` e `contain`.
+
+**Como testar manualmente:** Abrir o menu em desktop, celular vertical e horizontal; conferir legibilidade, recorte e navegação. Abrir Options, Ranking e Match History para confirmar que seus fundos permanecem iguais.
+
+**Possíveis perguntas de entrevista:** Como evitar que uma mudança visual afete todas as telas? Usando uma variável específica no componente desejado e mantendo o tema compartilhado existente. Por que usar `cover`? Para preencher a área preservando a proporção, aceitando recortes em formatos diferentes.
+
+**Verificações:** Typecheck, lint e build passaram. Permanece o aviso existente de chunk acima de 500 kB. Inspeção visual manual pendente; não foram executados testes Playwright nesta alteração.
+
+**Limitação:** A origem e a licença da imagem fornecida não foram verificadas; guardar essa informação antes da entrega pública. Os baselines visuais anteriores do menu precisarão de revisão quando o novo visual for aprovado.
+
 ## 5. Conceitos importantes para estudar
 
 ### Atualização da etapa 39 — Web Audio

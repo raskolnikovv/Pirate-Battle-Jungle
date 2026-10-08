@@ -63,8 +63,8 @@ export function Game({ onNavigate }: GameProps) {
         </section>
         <div className="game-header-actions">
           <button type="button" className="menu-button menu-button-primary" disabled={hud?.status !== "running"}
-            onClick={() => gameControlsRef.current?.pause()}><img src={HUD_ASSET_MANIFEST.pauseIcon} width={18} height={18} alt="" />Pause</button>
-          <button type="button" className="menu-button menu-button-secondary" onClick={handleQuit}>Quit Match</button>
+            data-ui-sound="none" onClick={() => gameControlsRef.current?.pause()}><img src={HUD_ASSET_MANIFEST.pauseIcon} width={18} height={18} alt="" />Pause</button>
+          <button type="button" className="menu-button menu-button-secondary" data-ui-sound="back" onClick={handleQuit}>Quit Match</button>
         </div>
       </header>
 

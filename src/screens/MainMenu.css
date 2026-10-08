@@ -1,7 +1,7 @@
 .main-menu {
   min-height: 100dvh;
   padding: max(24px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
-  background: linear-gradient(#08273080, #082730a6), var(--menu-background) center / cover;
+  background: linear-gradient(#08273080, #082730a6), var(--main-menu-background) center / cover no-repeat;
   display: grid;
   place-items: center;
   color: #fff1d2;

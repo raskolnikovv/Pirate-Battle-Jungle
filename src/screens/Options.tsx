@@ -87,7 +87,7 @@ export function OptionsForm({ onBack, context = 'menu' }: { onBack: () => void; 
         {storageError && <p className="options-error" role="alert">{storageError}</p>}
         <div className="options-actions">
           {showMatchSettings && <button className="menu-button menu-button-primary" type="submit">Save</button>}
-          <button className="menu-button menu-button-secondary" type="button" onClick={onBack}>Back</button>
+          <button className="menu-button menu-button-secondary" type="button" data-ui-sound={context === 'match' ? 'close' : 'back'} onClick={onBack}>Back</button>
         </div>
       </form>
   );

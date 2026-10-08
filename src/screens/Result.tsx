@@ -21,7 +21,7 @@ export function Result({ onNavigate, result, storageError = false }: ResultProps
     return <PirateScreen title="Match Results">
       <p role="status">No completed match is available.</p>
       <div className="menu-secondary-content"><PendingSubmissions /><NetworkScenarioControls /></div>
-      <div className="pirate-actions"><NavButton unstyled className="menu-button menu-button-primary" onClick={() => onNavigate("main-menu")}>Main Menu</NavButton></div>
+      <div className="pirate-actions"><NavButton unstyled className="menu-button menu-button-primary" sound="back" onClick={() => onNavigate("main-menu")}>Main Menu</NavButton></div>
     </PirateScreen>;
   }
   const score = result.score;
@@ -63,7 +63,7 @@ export function Result({ onNavigate, result, storageError = false }: ResultProps
         </section>
         <div className="pirate-actions">
           <NavButton unstyled className="menu-button menu-button-primary" onClick={() => onNavigate("game")}>Play Again</NavButton>
-          <NavButton unstyled className="menu-button menu-button-primary" onClick={() => onNavigate("main-menu")}>Main Menu</NavButton>
+          <NavButton unstyled className="menu-button menu-button-primary" sound="back" onClick={() => onNavigate("main-menu")}>Main Menu</NavButton>
         </div>
         <details className="result-details">
           <summary>Match Details</summary>
@@ -73,7 +73,7 @@ export function Result({ onNavigate, result, storageError = false }: ResultProps
         </details>
         {storageError && <p role="alert">Unable to save this result locally. It remains available until you reload.</p>}
         <div className="menu-secondary-content"><PendingSubmissions /><NetworkScenarioControls /></div>
-        <div className="result-ranking-link"><NavButton unstyled className="menu-button menu-button-secondary" onClick={() => onNavigate("ranking")}>Ranking</NavButton></div>
+        <div className="result-ranking-link"><NavButton unstyled className="menu-button menu-button-secondary" sound="open" onClick={() => onNavigate("ranking")}>Ranking</NavButton></div>
       </div>
     </PirateScreen>
   );

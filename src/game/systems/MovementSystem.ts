@@ -30,8 +30,35 @@ export class MovementSystem {
           ? Math.max(0, distance - config.shooter.attackRange)
           : distance;
         const movement = Math.min(enemy.speed * deltaSeconds, remainingApproach);
-        enemy.x += dx / distance * movement;
-        enemy.y += dy / distance * movement;
+        let headingX = dx;
+        let headingY = dy;
+        // Detour around isolated land; keep existing coastal sliding unchanged.
+        for (const island of state.islands) for (const collider of island.colliders) {
+          const cx = island.x + collider.x;
+          const cy = island.y + collider.y;
+          const radius = collider.radius + enemy.collisionRadius + 8;
+          const padding = config.enemyBoundaryPadding;
+          if (cx - radius < padding || cy - radius < padding
+            || cx + radius > config.arenaWidth - padding
+            || cy + radius > config.arenaHeight - padding) continue;
+          const t = Math.max(0, Math.min(1, ((cx - enemy.x) * dx + (cy - enemy.y) * dy) / (distance * distance)));
+          if (Math.hypot(enemy.x + dx * t - cx, enemy.y + dy * t - cy) >= radius) continue;
+          const nx = enemy.x - cx;
+          const ny = enemy.y - cy;
+          // A ship already inside the steering margin must be allowed to leave it.
+          if (nx * dx + ny * dy >= 0) continue;
+          const side = nx * (player.y - cy) - ny * (player.x - cx) >= 0 ? 1 : -1;
+          const angle = Math.atan2(ny, nx) + side * 0.5;
+          headingX = cx + Math.cos(angle) * radius - enemy.x;
+          headingY = cy + Math.sin(angle) * radius - enemy.y;
+        }
+        const headingLength = Math.hypot(headingX, headingY);
+        if (headingLength > 0 && movement > 0) {
+          enemy.rotation = Math.atan2(headingX, -headingY);
+          const step = Math.min(movement, headingLength);
+          enemy.x += headingX / headingLength * step;
+          enemy.y += headingY / headingLength * step;
+        }
       }
       const padding = Math.max(config.enemyBoundaryPadding, enemy.collisionRadius);
       enemy.x = Math.max(padding, Math.min(config.arenaWidth - padding, enemy.x));

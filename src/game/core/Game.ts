@@ -1,6 +1,6 @@
 import { DEFAULT_GAME_CONFIG, SESSION_DURATION_LIMITS, type GameConfig } from '@/config/gameConfig';
 import { createPlayer } from '../entities/Player';
-import { createIsland } from '../entities/Island';
+import { createCoverIsland, createIsland } from '../entities/Island';
 import { InputManager, type InputSnapshot } from '../input/InputManager';
 import { GameRenderer } from '../rendering/GameRenderer';
 import { MovementSystem } from '../systems/MovementSystem';
@@ -12,6 +12,7 @@ import type { GameFinishReason, GameState } from './GameState';
 import { createHudSnapshot, type GameHudSnapshot } from './GameHudSnapshot';
 import type { CompletedMatch } from '@/types/completedMatch';
 import { createMatchId } from './createMatchId';
+import { gameAudio } from '@/audio/AudioManager';
 
 const PLAYER_ID = 'player';
 
@@ -46,7 +47,8 @@ export class Game {
     private readonly onHudChange?: (snapshot: GameHudSnapshot) => void,
     private readonly onMatchComplete?: (result: CompletedMatch) => void,
   ) {
-    this.combatSystem = new CombatSystem((event) => this.renderer.emitCombatEffect(event));
+    this.combatSystem = new CombatSystem((event) => this.renderer.emitCombatEffect(event),
+      (sound) => { if (sound !== 'ocean') gameAudio.play(sound); });
     this.loop = new GameLoop({
       update: (deltaSeconds) => {
         this.update(deltaSeconds);
@@ -80,6 +82,7 @@ export class Game {
     this.configSnapshot = copyConfig(config);
     this.spawnSystem = new SpawnSystem(this.configSnapshot);
     this.state = this.createInitialState(this.configSnapshot);
+    gameAudio.start();
     this.lastHudSnapshot = null;
     this.publishHud();
     this.input.attach();
@@ -93,6 +96,7 @@ export class Game {
   pause(): void {
     if (this.state?.status !== 'running') return;
     this.state.status = 'paused';
+    gameAudio.pause();
     this.input.detach();
     this.loop.stop();
     this.render(0);
@@ -102,6 +106,7 @@ export class Game {
   resume(): void {
     if (this.state?.status !== 'paused' || document.hidden || !document.hasFocus()) return;
     this.state.status = 'running';
+    gameAudio.resume();
     this.input.attach();
     // start resets lastTime and accumulator, discarding the paused interval.
     this.loop.start();
@@ -118,6 +123,7 @@ export class Game {
   }
 
   destroy(): void {
+    gameAudio.leave(this.state?.status === 'finished');
     this.stop();
     this.renderer.clearCombatEffects();
     this.input.detach();
@@ -150,7 +156,12 @@ export class Game {
 
     return {
       players: new Map([[player.id, player]]),
-      islands: [createIsland('island-1', arenaWidth * 0.7, arenaHeight * 0.4, config.islandCollisionRadius)],
+      // Broad peninsulas provide cover while leaving the central channel open.
+      islands: [
+        createIsland('island-1', arenaWidth / 16, arenaHeight / 10, config.islandCollisionRadius * 2.25),
+        createIsland('island-2', arenaWidth * 11 / 12, arenaHeight * 13 / 12, config.islandCollisionRadius * 2.5, -1),
+        createCoverIsland('island-3', arenaWidth * 37 / 48, arenaHeight * 19 / 60, config.islandCollisionRadius / 2),
+      ],
       enemies: new Map(),
       projectiles: new Map(),
       weaponCooldowns: { front: 0, left: 0, right: 0 },
@@ -226,6 +237,7 @@ export class Game {
     if (this.state?.status !== 'running') return;
     this.state.status = 'finished';
     this.state.finishReason = reason;
+    gameAudio.finish(reason === 'defeated');
     this.input.detach();
     this.detachPauseListeners();
     if (this.configSnapshot) {
@@ -255,9 +267,15 @@ export class Game {
         : null;
       projectile.lifetime -= deltaSeconds;
       const outside = next.x < 0 || next.x > config.arenaWidth || next.y < 0 || next.y > config.arenaHeight;
+      // Observe the actual segment, clipped to first contact, without changing physics.
+      const fraction = hit?.fraction ?? 1;
+      this.renderer.trackProjectileMovement(projectile.id, projectile.x, projectile.y,
+        projectile.x + (next.x - projectile.x) * fraction,
+        projectile.y + (next.y - projectile.y) * fraction);
       if (hit || projectile.lifetime <= 0 || outside) {
         // Consume before applying damage so this projectile cannot hit a second target.
         state.projectiles.delete(projectile.id);
+        if (hit) gameAudio.play(hit.enemyId || hit.playerId ? 'impact' : 'coastImpact');
         if (hit) this.renderer.emitCombatEffect({
           type: 'impact',
           x: projectile.x + (next.x - projectile.x) * hit.fraction,

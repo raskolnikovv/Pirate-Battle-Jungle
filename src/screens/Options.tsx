@@ -1,5 +1,6 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { PirateScreen } from '@/components/PirateScreen';
+import { AudioControls } from '@/components/AudioControls';
 import type { ScreenName } from '@/app/navigationTypes';
 import { ENEMY_SPAWN_INTERVAL_LIMITS, SESSION_DURATION_LIMITS } from '@/config/gameConfig';
 import { loadGameOptions, saveGameOptions, validateGameOptions, type GameOptionsErrors } from '@/config/gameOptions';
@@ -75,6 +76,7 @@ export function OptionsForm({ onBack }: { onBack: () => void }) {
           <p id="spawn-hint">Between {ENEMY_SPAWN_INTERVAL_LIMITS.min} and {ENEMY_SPAWN_INTERVAL_LIMITS.max} seconds. Lower values mean more frequent spawn attempts.</p>
           {errors.enemySpawnInterval && <p id="spawn-error" className="options-error" role="alert">{errors.enemySpawnInterval}</p>}
         </div>
+        <AudioControls />
         <p role="status" aria-atomic="true">{message}</p>
         {storageError && <p className="options-error" role="alert">{storageError}</p>}
         <div className="options-actions">

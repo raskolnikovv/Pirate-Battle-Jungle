@@ -5,9 +5,13 @@ import { createProjectile } from '../entities/Projectile';
 import type { InputSnapshot } from '../input/InputManager';
 import type { CollisionEvent } from './CollisionSystem';
 import type { CombatVisualEvent } from '../rendering/CombatEffects';
+import type { SoundName } from '@/audio/audioAssets';
 
 export class CombatSystem {
-  constructor(private readonly onVisualEvent?: (event: CombatVisualEvent) => void) {}
+  constructor(
+    private readonly onVisualEvent?: (event: CombatVisualEvent) => void,
+    private readonly onSound?: (sound: SoundName) => void,
+  ) {}
 
   applyCollision(state: GameState, event: CollisionEvent, config: GameConfig): void {
     if (state.status !== 'running') return;
@@ -17,6 +21,7 @@ export class CombatSystem {
       enemy.health = Math.max(0, enemy.health - event.damage);
       if (event.damage > 0) this.onVisualEvent?.({ type: 'damage', shipId: enemy.id });
       if (enemy.health === 0) {
+        this.onSound?.('explosion');
         this.onVisualEvent?.({ type: 'destroy', x: enemy.x, y: enemy.y });
         state.enemies.delete(enemy.id);
         if (event.isPlayerOwned) {
@@ -38,6 +43,7 @@ export class CombatSystem {
       this.onVisualEvent?.({ type: 'damage', shipId: player.id });
       this.onVisualEvent?.({ type: 'impact', x: player.x, y: player.y });
       this.onVisualEvent?.({ type: 'destroy', x: enemy.x, y: enemy.y });
+      this.onSound?.('explosion');
       state.enemies.delete(enemy.id);
     }
   }
@@ -64,6 +70,7 @@ export class CombatSystem {
         isPlayerOwned: false,
       }, config.shooter);
       state.projectiles.set(projectile.id, projectile);
+      this.onSound?.('enemy');
       this.onVisualEvent?.({ type: 'fire', x: projectile.x, y: projectile.y, rotation: projectile.rotation });
       enemy.fireCooldownRemaining = config.shooter.fireCooldown;
     }
@@ -81,14 +88,17 @@ export class CombatSystem {
     // Ignore floating-point residue after subtracting fixed timesteps.
     if (input.fireFront && cooldowns.front <= 1e-9) {
       this.fire(state, player, player.rotation, config.frontShotOffset, 0, config);
+      this.onSound?.('front');
       cooldowns.front = config.weaponCooldowns.primary;
     }
     if (input.fireLeft && cooldowns.left <= 1e-9) {
       this.fireBroadside(state, player, -1, config);
+      this.onSound?.('broadside');
       cooldowns.left = config.weaponCooldowns.secondary;
     }
     if (input.fireRight && cooldowns.right <= 1e-9) {
       this.fireBroadside(state, player, 1, config);
+      this.onSound?.('broadside');
       cooldowns.right = config.weaponCooldowns.secondary;
     }
   }

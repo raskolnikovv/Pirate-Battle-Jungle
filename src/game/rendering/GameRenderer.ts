@@ -3,6 +3,8 @@ import type { GameAssets } from '../assets/gameAssets';
 import type { GameState } from '../core/GameState';
 import { CombatEffects, COMBAT_VISUALS, type CombatVisualEvent } from './CombatEffects';
 import type { Player } from '@/types/domain';
+import type { Island } from '../entities/Island';
+import { ProjectileTrails } from './ProjectileTrails';
 
 export const SHOW_COLLISION_DEBUG = false;
 
@@ -28,6 +30,7 @@ export class GameRenderer {
   private healthLayer: Container | null = null;
   private readonly healthViews = new Map<string, HealthView>();
   private combatEffects: CombatEffects | null = null;
+  private projectileTrails: ProjectileTrails | null = null;
 
   constructor(
     private readonly arenaWidth: number,
@@ -43,12 +46,18 @@ export class GameRenderer {
       width: this.arenaWidth,
       height: this.arenaHeight,
     });
+    // Larger waves and a quieter contrast, using the supplied water texture.
+    water.tileScale.set(2.5);
+    water.alpha = 0.55;
+    const seaColor = new Graphics().rect(0, 0, this.arenaWidth, this.arenaHeight).fill(0x3eb8ce);
     this.islandLayer = new Container();
     this.playerSprite = new Sprite(assets.playerShip);
     this.playerSprite.anchor.set(0.5);
     this.projectileLayer = new Container();
     this.enemyLayer = new Container();
-    this.stage.addChild(water, this.islandLayer, this.enemyLayer, this.projectileLayer, this.playerSprite);
+    this.projectileTrails = new ProjectileTrails();
+    this.stage.addChild(seaColor, water, this.islandLayer, this.projectileTrails.graphics,
+      this.enemyLayer, this.projectileLayer, this.playerSprite);
     this.combatEffects = new CombatEffects(assets);
     this.stage.addChild(this.combatEffects.container);
     this.healthLayer = new Container();
@@ -61,9 +70,16 @@ export class GameRenderer {
 
   emitCombatEffect(event: CombatVisualEvent): void { this.combatEffects?.emit(event); }
 
-  updateCombatEffects(deltaSeconds: number): void { this.combatEffects?.update(deltaSeconds); }
+  updateCombatEffects(deltaSeconds: number): void {
+    this.combatEffects?.update(deltaSeconds);
+    this.projectileTrails?.update(deltaSeconds);
+  }
 
-  clearCombatEffects(): void { this.combatEffects?.clear(); }
+  clearCombatEffects(): void { this.combatEffects?.clear(); this.projectileTrails?.clear(); }
+
+  trackProjectileMovement(id: string, fromX: number, fromY: number, x: number, y: number): void {
+    this.projectileTrails?.record(id, fromX, fromY, x, y);
+  }
 
   private updateShipAppearance(sprite: Sprite, ship: Player, kind: 'player' | 'chaser' | 'shooter'): void {
     if (!this.assets) return;
@@ -77,6 +93,7 @@ export class GameRenderer {
   render(state: GameState | null, _alpha: number): void {
     this.renderIslands(state);
     this.renderProjectiles(state);
+    this.projectileTrails?.render();
     this.renderEnemies(state);
     if (this.playerSprite) {
       const player = state?.players.values().next().value;
@@ -153,9 +170,11 @@ export class GameRenderer {
       let view = this.islandViews.get(island.id);
       if (!view) {
         view = new Container();
+        this.renderCoast(view, island);
         for (const tile of island.tiles) {
           const sprite = new Sprite(this.assets[tile.asset]);
           sprite.position.set(tile.x, tile.y);
+          sprite.scale.set(tile.scale ?? 1);
           view.addChild(sprite);
         }
         this.islandLayer.addChild(view);
@@ -163,6 +182,32 @@ export class GameRenderer {
       }
       view.position.set(island.x, island.y);
     }
+  }
+
+  private renderCoast(view: Container, island: Island): void {
+    if (!this.assets) return;
+    const radius = island.colliders[0].radius;
+    const shallows = new Graphics().circle(0, 0, radius + 22).fill({ color: 0xb7e6df, alpha: 0.22 });
+    const sand = new TilingSprite({ texture: this.assets.sand, width: radius * 2, height: radius * 2 });
+    sand.position.set(-radius, -radius);
+    sand.tileScale.set(4);
+    const coastMask = new Graphics().circle(0, 0, radius).fill(0xffffff);
+    sand.mask = coastMask;
+    const grass = new TilingSprite({ texture: this.assets.grassClearing, width: radius * 2, height: radius * 2 });
+    grass.position.set(-radius, -radius);
+    // One uniformly scaled grass patch avoids checkerboard seams on larger land.
+    grass.tileScale.set(radius * 2 / 64);
+    const grassMask = new Graphics();
+    // Only the inner vegetation boundary varies; the solid outer coast is exact.
+    for (let point = 0; point < 32; point++) {
+      const angle = point * Math.PI * 2 / 32;
+      const innerRadius = radius * (0.78 + Math.sin(angle * 5) * 0.025 + Math.cos(angle * 3) * 0.02);
+      const x = Math.cos(angle) * innerRadius; const y = Math.sin(angle) * innerRadius;
+      if (point === 0) grassMask.moveTo(x, y); else grassMask.lineTo(x, y);
+    }
+    grassMask.closePath().fill(0xffffff);
+    grass.mask = grassMask;
+    view.addChild(shallows, sand, coastMask, grass, grassMask);
   }
 
   private renderCollisionDebug(state: GameState | null): void {
@@ -227,6 +272,8 @@ export class GameRenderer {
   }
 
   destroy(): void {
+    this.projectileTrails?.destroy();
+    this.projectileTrails = null;
     this.combatEffects?.destroy();
     this.combatEffects = null;
     this.stage?.removeChildren().forEach((child) => child.destroy({ children: true }));

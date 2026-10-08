@@ -76,7 +76,7 @@ async function placeShip(page: Page, rotation: number) {
   await page.evaluate(rotation => {
     const player = Reflect.get(window, 'touchGame').getState().players.values().next().value;
     // Keep the real simulation clear of the island while measuring steering.
-    player.x = 320; player.y = 330; player.rotation = rotation;
+    player.x = 480; player.y = 330; player.rotation = rotation;
   }, rotation);
 }
 const neutral = { touchDirection: null, forward: false, turnLeft: false, turnRight: false, fireFront: false, fireLeft: false, fireRight: false };

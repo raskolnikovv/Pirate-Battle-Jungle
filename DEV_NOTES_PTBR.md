@@ -4,6 +4,14 @@
 
 ## 1. Visão geral do projeto
 
+**Atualização da etapa 39:** áudio oficial integrado aos eventos reais do jogo, com canhões, impactos, explosões, início/término, pausa/retomada e oceano. Options tem mute e volumes separados persistidos. Áudio não altera GameConfig, estado contínuo React, regras ou registro de partidas.
+
+**Atualização da etapa 38:** penínsulas maiores e uma ilha pequena no quadrante superior direito oferecem cobertura real contra projéteis. Desvio local de inimigos foi autorizado após reproduzir o bloqueio da perseguição direta. Velocidades, armas e controles mantêm os valores anteriores.
+
+**Atualização da etapa 37:** arena agora tem duas costas nos cantos, água oficial mais suave e rastros curtos de balas no Pixi. Simulação, IA, armas e regras permanecem separadas da apresentação. Suíte completa: 125 testes aprovados; revisão física de legibilidade/performance continua necessária.
+
+**Atualização da etapa 36:** jogador agora usa vela escura com caveira (2→8→14), Chaser usa vela clara (1→7→13), Shooter continua vermelho. A ilha existente ganhou posto costeiro e vegetação sem alterar centro, collider ou regras. Suíte completa: 118 testes aprovados.
+
 **Atualização da etapa 35:** feedback de combate agora usa chamas, impactos, explosões e três estágios oficiais de vela conforme HP. Todos os efeitos ficam no Pixi, congelam na pausa e são limpos ao sair. A suíte atual tem 114 testes aprovados; inspeção física da legibilidade continua necessária. Sons não foram adicionados.
 
 **Atualização da etapa 27:** após feedback físico, o joystick agora aponta rumo desejado em 360° com avanço analógico e giro gradual pelo menor arco. Teclado e ataques mantêm suas regras. Cenários de rede configuráveis e touch gameplay da etapa 26 já estão implementados; notas anteriores abaixo registram o estado de suas respectivas etapas.
@@ -251,6 +259,16 @@ Registro da decisão do marco #4. No marco #5, o teste foi ampliado para retorna
 **Alternativas possíveis:** retry automático com backoff ou fila em IndexedDB. Nesta etapa, localStorage e botão explícito tornam o comportamento simples e previsível. Se storage negar escrita, mantemos o payload na sessão, avisamos e não começamos o POST.
 
 **Como eu explicaria isso em uma entrevista:** “Salvo o que preciso reenviar antes da chamada. Só tiro da fila quando a API devolve a mesma partida confirmada. Se a resposta se perder, reenviar o mesmo ID recupera o registro existente.”
+
+### Áudio separado das regras e do snapshot da partida
+
+**O que foi decidido:** um AudioManager pequeno usa Web Audio, buffers compartilhados, dois ganhos (efeitos e oceano) e preferências locais independentes de GameConfig. CombatSystem emite intenções sonoras por callback; Game comunica impactos e ciclo da partida.
+
+**Por que fizemos assim:** o áudio deve acompanhar eventos reais sem dirigir a simulação. Um broadside produz três balas mas um único som. Preferências de volume podem mudar durante a pausa sem alterar a configuração comparada no ranking.
+
+**Alternativas possíveis:** elementos HTMLAudio com pool também funcionariam, mas buffers Web Audio simplificam sobreposição e volumes separados. Não precisamos de biblioteca de áudio.
+
+**Como eu explicaria isso em uma entrevista:** “React controla os volumes em Options; os sistemas avisam quando um tiro ou explosão realmente acontece. O manager toca buffers já carregados e interrompe o combate sonoro ao pausar, sem atualizar React a cada frame.”
 
 ## 4. Diário de implementação
 
@@ -1664,7 +1682,141 @@ CombatEffects mantém sprites temporários e tempos de flash, usando as texturas
 - A vela rasgada muda a colisão? “Não. Troco a textura por outra do mesmo tamanho; o collider e a simulação continuam iguais.”
 - Por que não destruir a textura junto com a chama? “Outros sprites compartilham essa textura. Destruo a view ao expirar e libero os assets ao desmontar a partida.”
 
+### Etapa 36 — Navio pirata e posto costeiro na ilha existente
+
+**Status:** Concluído — validação automatizada e inspeção das capturas passaram; teste físico final pelo desenvolvedor permanece necessário.
+
+**Responsável pela implementação:** Codex. Decisão de identidade visual solicitada pelo desenvolvedor; inspeção física final pelo desenvolvedor.
+
+**O que foi implementado:** Jogador usa a família oficial de vela escura com caveira `ship_2→8→14`; Chaser usa `ship_1→7→13`; Shooter mantém `ship_3→9→15`. A ilha ganhou duas torres conectadas, entrada de madeira, clareira, vegetação de tamanhos diferentes e rocha. São 17 sprites estáticos, sem segunda ilha.
+
+**Arquivos principais envolvidos:** `src/game/assets/gameAssets.ts`, `src/game/entities/Island.ts`, `src/game/rendering/GameRenderer.ts`, `tests/combatFeedback.spec.ts`, novo `tests/arenaVisuals.spec.ts` e três baselines da arena sem modal.
+
+**Como funciona:** O manifest centraliza as famílias e seis novos tiles: 40 (clareira), 71/72 (vegetação), 13 (torre), 16 (muro) e 60 (entrada). Todos os tiles oficiais têm 64×64; navios e seus estágios têm 66×113 e continuam apontando para cima com rotação zero e anchor central. `IslandTile.scale` é opcional e uniforme, aplicado uma vez ao criar o sprite. As torres compartilham textura. O renderer reutiliza o container por ID e libera sprites/texturas pela rotina existente.
+
+**Por que foi feito dessa forma:** A proposta inicial do audit foi limitada à decoração da ilha atual para evitar mudanças de IA, spawn e balanceamento. A areia e as costas preservam a matriz 3×3; centro (672,240), collider circular de raio 104 e arena 960×600 continuam iguais. As estruturas sólidas ficam inteiramente dentro do círculo, sem bloquear novas áreas navegáveis. Nada foi alterado em GameConfig, sistemas, API, registro ou input. A referência sugere o pirata como jogador, mas não define papéis formalmente; a escolha foi explicitamente autorizada nesta etapa.
+
+**O que eu preciso entender:** Estudar diferença entre bounding box da imagem, pixels transparentes e collider circular; separação entre apresentação e simulação; escala uniforme; propriedade e compartilhamento das texturas. Esta implementação foi escrita pelo Codex, sem atribuir sua autoria manual ao desenvolvedor.
+
+**Como testar manualmente:** Iniciar uma partida e reconhecer jogador escuro, Chaser claro e Shooter vermelho. Girar e disparar; observar velas danificadas sem mudança de tamanho/centro. Contornar a ilha por todos os lados e disparar contra a praia. Conferir que torres/plantas não cobrem tiros ou barras de vida, inclusive no telefone em portrait e landscape. Pausar, sair e iniciar novamente para conferir ausência de sprites ou efeitos antigos.
+
+**Testes/checks:** Typecheck, lint e build passaram. Suíte completa: 118 testes Chromium aprovados em 2 minutos, com dois workers; 26 testes focados também passaram. Os testes novos verificam geometria preservada, estruturas dentro do collider, reutilização de sprites/texturas, cleanup, montagem com Strict Mode, ausência de overflow horizontal e colisão do jogador em oito direções. O teste de famílias agora verifica os nove arquivos oficiais, tamanho, anchor, rotação e thresholds. As três capturas novas foram inspecionadas em desktop/portrait/landscape; as baselines anteriores passaram sem alterações. Impactos na ilha, IA/combate, pausa, restart, registro e touch passaram na regressão. Avisos existentes: principal chunk minificado 1.035,72 kB (>500 kB) e NO_COLOR/FORCE_COLOR. O Chromium foi bloqueado inicialmente por EPERM no sandbox e passou na execução autorizada fora dele. npm/npx via PowerShell apontavam para um npm ausente; os mesmos comandos foram executados com npm.cmd/npx.cmd da instalação existente, sem alterar o ambiente ou instalar dependências. Fixtures iniciais foram corrigidas para renderizar o estado parado e tolerar o arredondamento já existente do canvas. Nenhum commit, push ou alteração do Master Checklist.
+
+**Limitações:** Praia continua aproximada por círculo, como antes; não foi criada geometria por pixel. O posto é decorativo dentro da ilha já bloqueada, sem canhões ativos. Legibilidade em telefone físico ainda deve ser confirmada; em portrait os detalhes ficam naturalmente menores. Não foram adicionados shaders, animação de água, sons ou obstáculos.
+
+**Possíveis perguntas de entrevista:**
+
+- A troca de navio muda o gameplay? “Não. Troco texturas com dimensões iguais, preservando entidade, anchor, velocidades e hitbox.”
+- Por que a fortificação não tem collider próprio? “Ela fica dentro da área já bloqueada da ilha; outro collider seria redundante.”
+- Como evitar recriar a ilha a cada frame? “Crio os sprites quando o ID aparece e reutilizo o container e as texturas até destruir a partida.”
+
+### Etapa 37 — Costas nos cantos, água suave e rastros de balas
+
+**Status:** Concluído — suíte completa e capturas aprovadas; inspeção em telefone físico permanece necessária.
+
+**Responsável pela implementação:** Codex. Composição inspirada na referência oficial e solicitada pelo desenvolvedor; teste físico final pelo desenvolvedor.
+
+**O que foi implementado:** Duas massas costeiras convexas substituem a ilha isolada: noroeste e sudeste, com centro aberto e rotas largas. O posto costeiro fica no noroeste. Água oficial aparece com ondas maiores e contraste mais suave; as balas deixam rastros curtos de todas as armas, incluindo Shooter.
+
+**Arquivos principais envolvidos:** `Game.ts`, `Island.ts`, `gameAssets.ts`, `GameRenderer.ts`, novo `ProjectileTrails.ts`, `arenaVisuals.spec.ts`, `combatFeedback.spec.ts`, novo `projectileTrails.spec.ts` e baselines de arena/rastros.
+
+**Como funciona:** Na arena padrão 960×600, os centros das costas são (-64,-64) e (1024,664), com raio 260, derivado do snapshot (`islandCollisionRadius × 2,5`). Cada costa usa somente um círculo. O renderer usa esse mesmo raio para a máscara da areia oficial tile_4; a grama tile_40 recebe uma borda interna irregular. A água rasa ao redor é exclusivamente visual. Tiles 13/16/60 compõem a fortificação; 65/70/71/72 fornecem rocha e vegetação. Estruturas estão dentro da terra bloqueada. Os recortes de praia da antiga matriz quadrada foram retirados do manifest porque não são usados nesta composição; os arquivos oficiais continuam no pacote.
+
+O tile_73 continua sendo a água. Escala de textura 2,5 e alpha 0,55 sobre uma cor de mar reduzem frequência e contraste da repetição. Areia usa escala 4 para reduzir emendas e grama usa escala 1,5. São máscaras e texturas estáticas criadas uma vez por costa, sem shaders, timers ou renderizações React por frame.
+
+Game comunica o segmento efetivamente percorrido por cada bala, limitado à primeira colisão. `ProjectileTrails` reutiliza um registro por ID e uma única Graphics para todas as linhas. Comprimento máximo 72 unidades, duração residual 0,18s e limite de 256 registros; limites são visuais, sem interferir nos projéteis. Desenhar não avança tempo. Updates ativos envelhecem os rastros; novos segmentos atualizam a ponta. Impacto, saída ou expiração deixam uma linha que desaparece em até 0,18s de tempo ativo. Pausa congela; restart/destroy limpam imediatamente.
+
+**Por que foi feito dessa forma:** A IA segue diretamente o jogador, então evitamos ilhas no meio, labirintos e canais estreitos. Costas convexas em cantos opostos permitem deslizamento pelo sistema existente e mantêm a maior parte da arena aberta. A areia e o collider usam uma geometria comum para evitar colisão invisível. Velocidades, dano, cooldowns, score, timer, distribuição/intervalo/limites de spawn, IA, input, registro e API não foram alterados. Como o mapa mudou, partidas anteriores têm outra topologia; resultados persistidos não foram migrados nem apagados.
+
+**O que eu preciso entender:** Estudar máscaras Pixi, TilingSprite/tileScale, geometria local versus mundial, soma dos raios nas colisões e efeitos limitados pelo tempo da simulação. Estudar o código escrito pelo Codex para distinguir um rastro visual da trajetória autoritativa. O limite de registros evita crescimento ilimitado mesmo em cenas carregadas.
+
+**Como testar manualmente:** Contornar ambas as costas e disparar contra a areia. Usar frente e os dois bordos simultaneamente com movimento; conferir linhas até as balas e impactos sem atravessar terra. Deixar Chasers perseguirem ao longo das praias e observar Shooters aproximando/disparando. Pausar com tiros ativos, aguardar e retomar: linhas não envelhecem na pausa. Sair/reiniciar e conferir ausência de resíduos. Conferir as duas orientações em telefone físico, especialmente contraste e tamanho dos rastros. Estruturas parcialmente fora da arena representam continuidade do litoral; não há câmera nem áreas navegáveis externas.
+
+**Testes/checks:** Suíte completa: 125 testes Chromium aprovados em 2,7 minutos, com dois workers. Testes de movimento cobrem cinco contatos em cada arco acessível e limites da arena. Testes exercitam 144 trajetos entre pontos próximos às praias e água aberta, com ambos os tipos de inimigo e a IA real, sem bloqueios persistentes. A grade de spawn verifica afastamento/terra: mais de 20% dos pontos amostrados são válidos com jogador central, preservando mais de 80% dos válidos da arena sem terra; 40 intervalos exercitam o spawn com seed e confirmam ambos os tipos. Testes de tiros reais verificam impacto nas duas costas, limite do segmento, alinhamento dos rastros com balas de todas as armas, pausa, desaparecimento, reinício, cleanup e limite de memória. Capturas desktop/portrait/landscape foram inspecionadas antes de aceitar as três baselines atualizadas da arena e três novas com rastros. Baselines anteriores de menus, Result e pausa não precisaram de atualização. Falhas intermediárias foram de carregamento inicial do servidor, fixture que confundia Graphics com Sprite, expectativa arbitrária de área de spawn e diferenças visuais esperadas; o teste final passou após revisão. Nenhum commit, push ou alteração do Master Checklist.
+
+**Limitações:** Composição deliberadamente mais aberta que sample.png; não reproduz seu mapa inteiro. As praias externas são arcos circulares, com grama irregular por dentro, e não colisão por pixel. O teste de trajetos amostra cenários, não prova todos os percursos possíveis. Água ainda repete uma textura; a escala e o contraste tornam a repetição menos evidente. Rastros são linhas curtas com fade, sem partículas ou fumaça. Legibilidade e FPS em telefone físico ainda precisam de verificação; não foi feita uma sessão formal de profiling nesta etapa.
+
+**Resultado dos checks e revisão do desenvolvedor:** Typecheck, lint e build passaram. Avisos existentes: principal chunk minificado de 1.037,41 kB (>500 kB), NO_COLOR/FORCE_COLOR; o último build também informou tempo de callbacks dos plugins (PLUGIN_TIMINGS), sem falha. O arquivo incremental gerado pelo TypeScript foi restaurado para evitar uma alteração incidental. Após ver as capturas, o desenvolvedor apontou que as costas ficaram pequenas e não oferecem cobertura tática suficiente. Os testes aprovados não demonstram qualidade de composição: a próxima revisão deve considerar penínsulas maiores com cobertura útil, validar colisões/spawn/perseguição e não tratar o layout atual como aprovação visual do desenvolvedor.
+
+**Possíveis perguntas de entrevista:**
+
+- Por que evitar uma ilha no centro? “A IA atual segue diretamente o jogador. Um mapa aberto preserva seu comportamento sem precisar introduzir pathfinding.”
+- Como garantir que a praia bloqueada coincide com a imagem? “Uso o mesmo círculo do estado para a máscara da areia e para colisões/spawn.”
+- O rastro calcula o movimento da bala? “Não. Recebe o segmento calculado pela simulação, já cortado no primeiro impacto.”
+- Como o rastro congela na pausa? “Seu tempo vem dos updates ativos do Game; renderizar sozinho não o envelhece.”
+
+### Etapa 38 — Cobertura navegável e ilha isolada
+
+**Status:** Concluído
+
+**Responsável pela implementação:** Codex, com decisões e aprovação do usuário.
+
+**O que foi implementado:** penínsulas ampliadas, fortificação com quatro torres e gramado oficial sem efeito de tabuleiro. Pequena ilha em (740, 190), raio 52, no quadrante superior direito da arena 960×600; há água em todos os lados. Praia, vegetação e pedra reutilizam texturas oficiais. Terra bloqueia navios e balas com os mesmos círculos usados para desenhar a costa.
+
+**Arquivos principais envolvidos:** `Game.ts`, `Island.ts`, `MovementSystem.ts`, `gameAssets.ts`, `GameRenderer.ts`, `arenaVisuals.spec.ts`, `combatFeedback.spec.ts`, `touchControls.spec.ts`, `projectileTrails.spec.ts` e imagens de regressão da arena/rastros. Fixtures de giro touch e expiração de disparos foram reposicionadas em água aberta para não misturar suas verificações com colisões nas penínsulas ampliadas; as colisões reais continuam ativas.
+
+**Como funciona:** a fábrica da ilha define decoração e collider. O renderer existente cria as máscaras de areia e grama uma vez. Spawn e colisões consultam a coleção de ilhas existente. Nenhum estado contínuo foi movido para React.
+
+**Por que foi feito dessa forma:** perseguição direta prendia o Chaser quando o jogador ficava atrás da ilha; teste de dez segundos confirmou o problema antes da implementação. Após autorização explícita, o movimento ganhou um desvio local: testa a rota até o jogador contra o círculo ampliado pelo raio do navio e margem de oito pixels, escolhe um lado pelo produto vetorial e aponta para um trecho de arco de 0,5 radiano. Permite sair da margem quando o movimento já aponta para fora. A velocidade continua vindo do snapshot; Shooter ainda para no alcance e pode disparar contra a cobertura. Deslizamento nas penínsulas continua com a lógica anterior. Não foi introduzido pathfinding, memória por inimigo ou biblioteca.
+
+**O que eu preciso entender:** estudar projeção de um ponto em segmento, produto vetorial para escolher lado, expansão do obstáculo pelo raio do navio e diferença entre desvio local e busca global de caminho. O trecho geométrico foi implementado pelo Codex e merece revisão antes da entrevista. Constantes do arco/margem são parâmetros geométricos do desvio, sem modificar dano, alcance ou velocidade.
+
+**Como testar manualmente:** navegar por cima, por baixo e pelos dois lados da ilha; tentar atravessar a praia; ficar atrás dela enquanto um Shooter dispara e verificar que as balas param na terra. Atrair Chasers de lados opostos e observar que contornam. Repetir em celular retrato/paisagem, pausar, retomar, sair e reiniciar. As penínsulas também oferecem cobertura abaixo da fortificação e à esquerda da costa inferior.
+
+**Possíveis perguntas de entrevista:**
+- Por que desenhar a ilha e adicionar colisão juntos? “Uma praia que parece sólida precisa bloquear o navio e as balas no mesmo lugar, para a cobertura ser previsível.”
+- Por que ampliar o círculo para o desvio? “O inimigo tem tamanho; seu centro precisa passar longe o suficiente para o casco não tocar a ilha.”
+- Isso resolve qualquer mapa? “Não. É um desvio local validado para esta ilha e rotas abertas; labirintos e vários obstáculos próximos exigiriam outra solução.”
+
+**Verificação:** testes determinísticos cobrem 144 rotas entre pontos da arena, spawn seguro, oito direções de aproximação do Chaser, aproximação do Shooter, volta completa do jogador, colisões em oito ângulos e cobertura contra disparos reais em cada massa de terra. Baselines de desktop, retrato e paisagem foram inspecionadas antes da atualização. A suíte focada passou com 16 testes; typecheck, lint e build passaram. Permanecem o aviso anterior de bundle acima de 500 kB e necessidade de inspeção física da aparência e do comportamento com alvo em movimento.
+
+**Resultado final da etapa 38:** suíte completa com 130 testes aprovados em Chromium (3,1 minutos), incluindo joystick em oito direções, teclado, pausa, cleanup, ranking e registro. A primeira execução revelou fixtures antigas que agora tocavam as penínsulas ampliadas; reposicionadas em água aberta, passaram sem alterar os controles nem as regras. Nenhum commit, push ou modificação do Master Checklist.
+
+### Etapa 39 — Áudio oficial e preferências
+
+**Status:** Concluído — verificação final da suíte registrada abaixo.
+
+**Responsável pela implementação:** Codex.
+
+**O que foi implementado:** manifesto de 12 WAVs, manager central, desbloqueio por gesto confiável, reutilização dos buffers, até 12 efeitos simultâneos e um loop de oceano independente. Options oferece mute, volume de efeitos e de ambiente, com labels, teclado e alvos de toque. Mudanças são imediatas e salvas automaticamente; validação e Save das opções de gameplay continuam iguais.
+
+**Arquivos principais envolvidos:** `src/audio/{audioAssets,audioPreferences,AudioManager}.ts`, `AudioControls.tsx`, `Options.tsx`, `PirateUI.css`, `App.tsx`, `Game.ts`, `CombatSystem.ts`, `audio.spec.ts` e três baselines de Options.
+
+**Como funciona:** App instala listeners de gesto e silêncio com cleanup. O contexto é criado/resumido dentro de pointerdown/keydown confiável, antes do carregamento assíncrono. WAVs são buscados e decodificados uma vez por contexto; falhas são tratadas e mostradas em Options. O jogo pode começar mesmo sem áudio. Um som de início pode aguardar a carga enquanto a partida ainda está ativa; ataques durante bloqueio/carga são descartados, sem fila. Cada disparo cria apenas a source descartável do buffer compartilhado, liberada em onended. O limite descarta sons novos em excesso sem cortar os anteriores.
+
+**Sons oficiais usados:** `cannon_fire_1` (frente), `cannon_broadside` (cada bordo), `cannon_fire_2` (Shooter), `ship_wood_hit_1` (projétil contra navio), `cannonball_water_hit_1` (impacto costeiro), `ship_explosion_1` (destruição e contato Chaser), `game_start`, `game_over` (derrota), `game_complete` (tempo expirado), `game_pause`, `game_resume` e `ocean_ambience_loop` (12 segundos). Todos são WAVs reais sob `public/assets/sounds`; os selecionados somam aproximadamente 3,31 MB. Não foram adicionados efeitos de menu, aviso de tempo ou som de navegação.
+
+Pausa interrompe as sources de combate e oceano; pode tocar o sinal curto de pausa somente com janela visível/focada. Blur/aba oculta silenciam também caudas de término. Voltar ao foco não retoma a partida. Resume explícito recria o loop, desde o início do áudio, sem replay de tiros. Sair interrompe sons; a transição natural para Result preserva somente os sons de conclusão (incluindo explosão na derrota). Reiniciar corta essas caudas. Buffers/contexto permanecem compartilhados entre telas e partidas; desmontar App remove listeners, aborta fetches, desconecta ganhos e fecha o contexto. Result permanece baseado na conclusão local e confirmação da API; som de conclusão não significa registro confirmado.
+
+**Por que foi feito dessa forma:** evita áudio duplicado pelo ciclo de montagem do Strict Mode, reprodução tripla de broadside e sons atrasados após pausa. `useSyncExternalStore` observa apenas preferências/erro de carga. A chave `pirate-battle.audio.v1` valida booleano e volumes finitos entre 0 e 1; valor ausente/corrompido usa efeitos 60%, ambiente 25%, sem mute. Falha ao gravar mantém a preferência nesta visita e apresenta aviso, sem mudar as opções de gameplay.
+
+**O que eu preciso entender:** estudar AudioContext e restrições de autoplay, AudioBuffer versus AudioBufferSourceNode descartável, GainNode, Promise.allSettled, AbortController e referências de contexto usadas para ignorar carga antiga após cleanup. Manager foi escrito pelo Codex; revisar os caminhos de pausa, fim de partida e desmontagem antes da entrevista.
+
+**Como testar manualmente:** abrir sem interação e confirmar silêncio; iniciar por clique, toque e teclado; ouvir frente, cada bordo e Shooter. Destruir inimigos e provocar contato Chaser. Pausar, ocultar aba, voltar e só então Resume; nenhum tiro antigo deve ser ouvido. Mudar volumes/mute, atualizar a página e verificar persistência. Encerrar por morte/tempo, usar Play Again e Quit. Repetir em celular físico; equilíbrio dos volumes, emenda do loop, modo silencioso do sistema e políticas de Safari precisam de avaliação auditiva real.
+
+**Possíveis perguntas de entrevista:**
+- Por que o broadside toca uma vez? “O evento é o acionamento da arma, não cada uma das três balas criadas.”
+- Por que guardar buffers e criar sources? “Buffer guarda os dados; cada source representa uma reprodução. Isso permite sobrepor tiros sem decodificar o WAV novamente.”
+- Por que áudio não pertence ao GameConfig? “É preferência de apresentação, pode mudar imediatamente e não deve alterar balanceamento nem comparação do ranking.”
+
+**Verificação e limites:** sete testes de áudio cobrem persistência, storage inválido/indisponível, gesto rejeitado e nova tentativa, limite de voices, reutilização, pausa, término/restart/cleanup, eventos reais de teclado, explosões sem duplicação e WAV ausente. Chromium real decodifica os 12 arquivos. Capturas de Options desktop/retrato/paisagem foram inspecionadas antes de atualizar baselines; cinco tamanhos mantêm controles alcançáveis por rolagem. Sons indisponíveis não são retentados automaticamente nesta sessão; refresh permite nova carga. Não há mix espacial, compressor, música ou pausa no ponto exato do loop. Typecheck, lint e build passaram; permanece o aviso de bundle acima de 500 kB.
+
+**Resultado final da etapa 39:** typecheck, lint e build aprovados; suíte completa com **137 testes aprovados em Chromium (3,0 minutos)**. A primeira execução teve seis timeouts de navegação inicial em `page.goto`, antes de ações de áudio; não se repetiram na segunda execução completa. A causa desses timeouts não foi confirmada, portanto não foram ocultados com retries ou aumento de timeout. Avisos existentes: bundle principal minificado de aproximadamente 1.045,59 kB (>500 kB) e NO_COLOR/FORCE_COLOR. Nenhum commit, push ou alteração do Master Checklist. Inspeção auditiva em telefone/Safari e avaliação de memória/FPS continuam manuais.
+
 ## 5. Conceitos importantes para estudar
+
+### Atualização da etapa 39 — Web Audio
+
+- **AudioContext e autoplay:** o navegador pode suspender a saída até um gesto confiável. Criamos/resumimos o contexto no próprio evento; falha no desbloqueio não gera fila de ataques.
+- **Buffer e source:** AudioBuffer reutiliza os dados decodificados; AudioBufferSourceNode é uma reprodução individual, usada uma vez e desconectada ao terminar. Várias sources podem compartilhar o buffer.
+- **Ganhos separados:** GainNode controla o volume de um grupo. Efeitos e oceano possuem ganhos independentes; mute zera ambos e interrompe as sources atuais.
+- **Cache local de apresentação:** buffers sobrevivem entre partidas para evitar downloads/decodificação repetidos. Esse cache não é TanStack Query nem estado de gameplay.
+
+### Atualização da etapa 36 — Composição visual sem alterar física
+
+- **Arte e collider são representações diferentes:** a fortificação usa tiles oficiais, mas continua dentro do círculo já existente. Adicionar um sprite não cria uma colisão; aumentar terra aparente sem revisar geometria produziria uma área visualmente enganosa.
+- **Escala uniforme:** `scale` opcional em IslandTile reduz plantas e rochas igualmente nos dois eixos. Não altera raio, posição da ilha nem dimensões lógicas da arena.
+- **Texturas compartilhadas:** torres repetidas usam a mesma textura. Os 17 sprites da ilha são criados uma vez por ID e reutilizados nos frames seguintes.
 
 - **Evento visual de combate:** notificação pontual que preserva tiros/impactos/mortes entre frames; apresentação não decide dano ou pontuação.
 - **Troca de textura e tint:** o mesmo sprite pode exibir uma vela rasgada e um flash temporário sem recriar a entidade ou mudar a colisão.
@@ -1823,6 +1975,10 @@ CombatEffects mantém sprites temporários e tempos de flash, usando as texturas
 - **O que os testes automatizados garantem hoje?** “A abertura do menu e alguns caminhos de navegação. Não garantem que o jogo seja jogável.”
 
 ## 7. Pontos que ainda não domino
+
+- **Costas e rastros implementados pelo Codex:** revisar máscaras com geometria compartilhada, curvas internas decorativas, orçamento de efeitos, segmentos até o primeiro impacto e tempo ativo. Entender os limites da amostragem de rotas da IA e validar contraste/FPS em aparelho físico.
+
+- **Arena visual implementada pelo Codex:** revisar textura versus collider, escala uniforme, ordem das camadas, sprites estáticos por ID e por que uma fortificação decorativa dentro da ilha não requer outro obstáculo. Validar legibilidade em telefone físico antes da entrevista.
 
 - **Feedback visual implementado pelo Codex:** estudar eventos pontuais versus snapshots, progressão por delta, frame de impacto variável, anchor das chamas, texturas compartilhadas, tint e cleanup dos sprites. Conferir a legibilidade das velas rasgadas e dos impactos no telefone, sem confundir animação com regra de dano.
 

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { gameAudio } from '@/audio/AudioManager';
 import { MainMenu } from '@/screens/MainMenu';
 import { Options } from '@/screens/Options';
 import { Game } from '@/screens/Game';
@@ -11,12 +12,14 @@ import { useSubmitMatch } from '@/hooks/useApi';
 import { toSubmitMatchRequest } from '@/api/matchContracts';
 
 export function App() {
+  useEffect(() => gameAudio.attach(), []);
   const [screen, setScreen] = useState<ScreenName>(() => window.location.hash === '#result' ? 'result' : 'main-menu');
   const [lastResult, setLastResult] = useState<GameResultPayload | undefined>(loadLastCompletedMatch);
   const [resultStorageError, setResultStorageError] = useState(false);
   const submission = useSubmitMatch();
 
   const navigate = (next: ScreenName, payload?: GameResultPayload) => {
+    if (next !== 'result' && next !== 'game') gameAudio.leave();
     if (next === 'result' && payload) {
       setLastResult(payload);
       setResultStorageError(!saveLastCompletedMatch(payload));

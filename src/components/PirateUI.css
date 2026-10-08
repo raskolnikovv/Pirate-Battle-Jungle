@@ -65,6 +65,10 @@
 .pirate-ui .options-field label { color: #ffd17a; }
 .pirate-ui .options-field p { font-size: 14px; }
 .pirate-ui .options-form [role="status"] { color: #b9f0cb; }
+.audio-controls { display: grid; gap: 16px; min-width: 0; padding: 16px; border: 1px solid #b4a27e; border-radius: 8px; }
+.audio-controls legend { color: #ffd17a; font-weight: 600; padding: 0 8px; }
+.audio-controls .menu-button { width: min(100%, 240px); }
+.pirate-ui .audio-controls input[type="range"] { padding: 0; accent-color: #ffd17a; }
 .pirate-ui .options-actions, .pirate-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 12px; padding-top: 16px; }
 .result-score-card { text-align: center; padding: 20px; margin-bottom: 16px; background: #122431cc; border: 1px solid #b4a27e; border-radius: 8px; }
 .pirate-ui .menu-secondary-content .pause-action { border: 1px solid #d1ac68; background: #dfb45f; color: #322009; white-space: normal; }

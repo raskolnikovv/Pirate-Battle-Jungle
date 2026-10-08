@@ -62,6 +62,11 @@ for (const mobile of [false, true]) {
 
     test('front and both broadsides show directional muzzle flashes, respect cooldowns and release textures safely', async ({ page }) => {
       await start(page);
+      // Keep this muzzle-expiration fixture away from coast impacts, tested separately.
+      await page.evaluate(() => {
+        const player = Reflect.get(window, 'feedbackGame').getState().players.values().next().value;
+        player.y = 350;
+      });
       for (const [key, count, rotation] of [['Space', 1, 0], ['q', 3, -Math.PI / 2], ['e', 3, Math.PI / 2]] as const) {
         await page.keyboard.down(key);
         await advance(page, 1);
@@ -208,18 +213,21 @@ for (const mobile of [false, true]) {
       await page.evaluate(() => {
         const state = Reflect.get(window, 'feedbackGame').getState();
         const player = state.players.values().next().value;
-        player.x = state.islands[0].x; player.y = 450;
+        const island = state.islands[0];
+        const distance = island.colliders[0].radius + 122;
+        player.x = island.x + distance / Math.sqrt(2); player.y = island.y + distance / Math.sqrt(2);
+        player.rotation = Math.atan2(island.x - player.x, -(island.y - player.y));
       });
       await page.keyboard.down('Space'); await advance(page, 1); await page.keyboard.up('Space');
-      await advance(page, 7);
+      await advance(page, 9);
       const hit = await inspect(page);
       expect(hit.projectiles).toBe(0);
       expect(hit.health).toBe(100);
       expect(hit.score).toBe(0);
       const impact = hit.effects.find((effect: { type: string }) => effect.type === 'impact');
       expect(impact).toBeDefined();
-      expect(impact.x).toBeCloseTo(672);
-      expect(impact.y).toBeCloseTo(349); // island radius 104 + projectile radius 5.
+      expect(impact.x).toBeCloseTo(60 + 239 / Math.sqrt(2));
+      expect(impact.y).toBeCloseTo(60 + 239 / Math.sqrt(2)); // coast 234 + projectile 5.
       await advance(page, 15);
       expect((await inspect(page)).effects).toHaveLength(0);
     });
@@ -282,6 +290,15 @@ test('missing combat texture prevents combat safely and a new attempt can load s
 
 test('all three ship families reuse equal-size official textures at damage thresholds', async ({ page }) => {
   await start(page);
+  const identities = await page.evaluate(async () => {
+    const { GAME_ASSET_MANIFEST } = await import('/src/game/assets/gameAssets.ts');
+    return ['playerShip', 'playerShipDamaged', 'playerShipCritical',
+      'chaserShip', 'chaserShipDamaged', 'chaserShipCritical',
+      'shooterShip', 'shooterShipDamaged', 'shooterShipCritical']
+      .map(key => GAME_ASSET_MANIFEST[key].split('/').at(-1));
+  });
+  expect(identities).toEqual(['ship_2.png', 'ship_8.png', 'ship_14.png',
+    'ship_1.png', 'ship_7.png', 'ship_13.png', 'ship_3.png', 'ship_9.png', 'ship_15.png']);
   const stages = await page.evaluate(async () => {
     const game = Reflect.get(window, 'feedbackGame'); const renderer = Reflect.get(game, 'renderer');
     const state = game.getState(); const config = Reflect.get(game, 'configSnapshot');
@@ -289,6 +306,7 @@ test('all three ship families reuse equal-size official textures at damage thres
     const { createChaser } = await import(chaserPath); const { createShooter } = await import(shooterPath);
     state.enemies.set('chaser', createChaser('chaser', 200, 200, config.chaser));
     state.enemies.set('shooter', createShooter('shooter', 800, 400, config.shooter));
+    for (const ship of [...state.players.values(), ...state.enemies.values()]) ship.rotation = 0.7;
     const assets = Reflect.get(renderer, 'assets');
     const textureName = (texture: unknown) => Object.entries(assets).find(([, value]) => value === texture)?.[0];
     const results = [];
@@ -298,7 +316,7 @@ test('all three ship families reuse equal-size official textures at damage thres
       Reflect.get(game, 'render').call(game, 0);
       const sprites = [Reflect.get(renderer, 'playerSprite'), ...Reflect.get(renderer, 'enemyViews').values()];
       results.push(sprites.map(sprite => ({ texture: textureName(sprite.texture), width: sprite.width,
-        height: sprite.height, anchorX: sprite.anchor.x, anchorY: sprite.anchor.y })));
+        height: sprite.height, anchorX: sprite.anchor.x, anchorY: sprite.anchor.y, rotation: sprite.rotation })));
     }
     return results;
   });
@@ -307,7 +325,7 @@ test('all three ship families reuse equal-size official textures at damage thres
     ['playerShipDamaged', 'chaserShipDamaged', 'shooterShipDamaged'],
     ['playerShipCritical', 'chaserShipCritical', 'shooterShipCritical'],
   ]);
-  for (const stage of stages) for (const ship of stage) expect(ship).toMatchObject({ width: 66, height: 113, anchorX: 0.5, anchorY: 0.5 });
+  for (const stage of stages) for (const ship of stage) expect(ship).toMatchObject({ width: 66, height: 113, anchorX: 0.5, anchorY: 0.5, rotation: 0.7 });
 });
 
 test('completion unmounts active effects and Play Again starts without residual feedback', async ({ page }) => {

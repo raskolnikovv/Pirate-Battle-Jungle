@@ -2,6 +2,8 @@
 
 > Caderno pessoal de estudo, fora da documentação oficial do produto. Registro o estado encontrado em 06/10/2026. A autoria das implementações preexistentes não está registrada nos arquivos; não vou atribuí-las a Manual, Codex, Trae ou trabalho colaborativo sem evidência. Esta primeira versão do diário foi escrita com auxílio do Codex.
 
+> Leitura atualizada em 08/10/2026: este diário preserva registros cronológicos, inclusive funcionalidades que ainda não existiam em etapas antigas. Para o estado atual, consulte [README.md](README.md) e [ARCHITECTURE.md](ARCHITECTURE.md); medições ficam em [PERFORMANCE_REPORT.md](PERFORMANCE_REPORT.md). Contagens e limitações de cada etapa descrevem a execução daquela época.
+
 ## 1. Visão geral do projeto
 
 **Atualização da etapa 41:** Options no menu mantém duração/spawn; durante a pausa apresenta apenas áudio e Show FPS. FPS é uma preferência visual persistida, desligada por padrão, medida pelo render e publicada aproximadamente uma vez por segundo. Não substitui o profiling obrigatório.
@@ -2003,6 +2005,26 @@ Pausa interrompe as sources de combate e oceano; pode tocar o sinal curto de pau
 **Possíveis perguntas de entrevista:** Como identificou a causa? “Li traces e comparei as mesmas verificações com servidor exclusivo e diferentes níveis de concorrência.” Por que esperar canvas e depois Pause? “Carregamento é uma fase própria; depois verifico que o gameplay está realmente pronto, mantendo a assertion.” O profiling causou as falhas? “Não encontrei evidência disso; ele nem foi carregado nos traces e adicionei uma verificação explícita de isolamento.”
 
 **Validação:** Typecheck, lint, build normal e TypeScript estrito dos testes de startup/menu/config passaram. Suíte completa final: 164 aprovados em 5,6 minutos, sem retries ou falhas. Repetição dos 21 casos originais duas vezes: 42 execuções aprovadas em 3,8 minutos, sem retries ou falhas. Comando: `npm test -- --grep <títulos originais> --repeat-each=2 --output profiling-results/attempts/regression-stability-results --reporter=list`. Nenhuma imagem de baseline foi atualizada. Avisos existentes: bundle principal de 1.052,19 kB acima de 500 kB e NO_COLOR/FORCE_COLOR. Erros de assets simulados nos testes negativos são esperados. Sem alteração de Master Checklist; sem commit ou push.
+
+### Etapa 48 — Documentação técnica de entrega
+
+**Status:** Concluído após revisão documental e verificações estáticas.
+
+**Responsável pela implementação:** Codex.
+
+**O que foi implementado:** README reorganizado em inglês para o avaliador e ARCHITECTURE criado a partir dos módulos reais. Nenhuma regra, asset, código de aplicação, teste ou Master Checklist foi alterado.
+
+**Arquivos principais envolvidos:** `README.md`, `ARCHITECTURE.md`, `DEV_NOTES_PTBR.md`. Instruções, relatório de performance, scripts e código foram usados como evidência.
+
+**Como funciona / por que:** README apresenta setup, controles, Options, cenários, recuperação, comandos e publicação. ARCHITECTURE explica lifecycle React/Pixi, timestep, input, colisões, eventos, áudio, snapshots, contratos e cache. Explicitei limites reais: alpha sem interpolação, IA local, MSW por origem, label de registro apenas na sessão, bundle grande e profiling headless leve. Node 22.13+ na linha 22.x atende MSW/ESLint; ambiente medido usa 22.23.2. Não existe pin de Node no projeto.
+
+**O que eu preciso entender:** Revisar arquitetura documentada com IA confrontando os módulos citados. Estudar configuração copiada versus preferências vivas, confirmação idempotente versus recibo persistido, simulação 60 Hz versus FPS, fallback HTTP do MSW versus worker HTTPS. Histórico e autoria foram preservados; números antigos não representam a última suíte.
+
+**Como testar manualmente:** Seguir `npm ci`, dev, build e preview; conferir Options, comandos, término/reinício/abandono e cenários indisponibilidade/timeout com retry. Na publicação, verificar worker, assets, mock API e refresh no domínio HTTPS. Profiling em diretório novo preserva evidências; benchmarks não foram repetidos para revisar texto.
+
+**Possíveis perguntas de entrevista:** Por que separar simulação de FPS? “As regras avançam em passos de 1/60 s, mas o navegador pode desenhar mais ou menos frames.” O que persiste? “Opções, preferências, última conclusão, pendências e registros aceitos pelo mock; partida ativa e status de confirmação da sessão não são restaurados.” Por que informar o cenário do benchmark? “Uma partida leve headless não demonstra desempenho de combate denso nem de um celular físico.”
+
+**Validação:** Typecheck, lint e build normal concluídos com exit 0; 45 links locais sem destinos ausentes e oito scripts npm citados encontrados em package.json. O link do HTML de profiling aponta para relatório local gerado/ignorado, não distribuído automaticamente no checkout. Build mantém aviso existente: chunk principal de 1.052,19 kB (gzip 351,41 kB), acima de 500 kB. Playwright não foi executado novamente: somente Markdown mudou; etapa 47 registra 164 aprovados e 42 repetições estáveis. Deploy público, fontes/licenças completas e análise longa de retenção continuam verificações pendentes.
 
 ## 5. Conceitos importantes para estudar
 

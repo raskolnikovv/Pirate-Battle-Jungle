@@ -1,339 +1,195 @@
 # Pirate Battle
 
-A 2D top-down naval shooter challenge built with React, TypeScript, and PixiJS.
+Single-player, top-down naval shooter built for the Jungle Gaming Junior React challenge. Sail around islands, fight Chasers and Shooters, and earn **1 point per enemy destroyed by player attacks**. Chaser contact/self-destruction awards **0 points**. Matches end when time expires or the player's HP reaches zero.
 
-## Install
+## Implemented features
+
+- Fixed 960×600 arena with coastal cover and an isolated island that block ships and shots.
+- Forward movement, rotation, front cannon and independent three-projectile broadsides.
+- Seeded spawning, Chaser pursuit/contact damage and ranged Shooter attacks.
+- Health bars, damaged ship artwork, firing/impact/explosion effects and projectile trails.
+- Manual/automatic pause, responsive touch joystick and simultaneous movement/attacks.
+- Pirate-themed menus, Options, Result, Ranking and Match History.
+- Semantic HTML HUD, accessible controls and managed dialog focus.
+- Official WAV effects, UI sounds and ocean ambience with persistent preferences.
+- Paginated mock API, persistent confirmed records and pending submissions with explicit retry.
+
+**Stack:** React 19, strict TypeScript, PixiJS 8, Vite 8, TanStack Query 5, Axios, MSW 3 and Playwright. Exact versions are in [package-lock.json](package-lock.json).
+
+## Getting started
+
+Use **Node.js 22.13+ in the 22.x line**, or Node.js 24+. MSW requires Node ≥22.12; ESLint requires ≥22.13 in the 22.x line. Node 20 is unsuitable for this dependency set. The recorded local environment uses **22.23.2**; the repository does not pin Node with `engines` or `.nvmrc`.
 
 ```bash
-npm install
-```
-
-First time running Playwright tests, install browser binaries:
-
-```bash
-npx playwright install chromium
-```
-
-## Development
-
-```bash
+npm ci
 npm run dev
 ```
 
-App runs at `http://localhost:5173` by default.
-
-### Physical-phone development (trusted HTTPS)
-
-Plain `http://192.168.x.x:5173` is **not** a secure context. Unlike localhost,
-it has no Service Worker support. However, installed MSW 3.0.2 automatically uses
-its built-in Fetch/XHR fallback there, with the same handlers. This was verified
-on an actual HTTP LAN origin; do not reject that working fallback based only on
-`navigator.serviceWorker` being absent. The proven completion failure was instead
-HTTPS-only `crypto.randomUUID()`, throwing before Result and preventing submission.
-Match IDs now use a cryptographically random UUID-v4 fallback via `getRandomValues`
-when needed. Local completion opens Result even if MSW startup or POST fails;
-failed registration remains pending.
-See [browser secure contexts](https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts)
-and [randomUUID](https://developer.mozilla.org/en-US/docs/Web/API/Crypto/randomUUID).
-
-For the next test you may still use `npm run dev -- --host 0.0.0.0` and open
-`http://YOUR_PC_IP:5173`: this version's real MSW fallback supports the same flow.
-**Recommended:** use Vite's native HTTPS support below to test the actual Service
-Worker as well. HTTPS is required for that worker, not for MSW's fallback mode.
-No extra application dependency or separate mobile API is needed.
-
-1. Install [mkcert](https://github.com/FiloSottile/mkcert#installation) on the PC
-   (Windows supports Chocolatey: `choco install mkcert`). Find the PC's current
-   private IPv4 address using `ipconfig`. PC and phone must share the LAN.
-2. In the repository's PowerShell terminal, replace `192.168.3.2` with that address:
-
-   ```powershell
-   mkcert -install
-   New-Item -ItemType Directory -Force .cert
-   mkcert -cert-file .cert/dev.pem -key-file .cert/dev-key.pem localhost 127.0.0.1 ::1 192.168.3.2
-   mkcert -CAROOT
-   ```
-
-3. Install the CA's **rootCA.pem** as a trusted CA on the phone. A `.crt` copy may
-   be needed for Android's certificate installer. Android's settings generally
-   use Security → Encryption & credentials → Install a certificate → CA certificate;
-   names vary by vendor. On iOS, install the certificate profile, then enable full
-   trust under Settings → General → About → Certificate Trust Settings. Transfer
-   only the public root certificate: **never transfer `rootCA-key.pem`**.
-4. Start the HTTPS server:
-
-   ```bash
-   npm run dev:mobile
-   ```
-
-   Open **`https://192.168.3.2:5174`** on the phone (use your PC IP). Permit the dev
-   server through the PC firewall if the phone cannot connect. The page must open
-   with a trusted certificate, without a TLS warning. Merely bypassing a warning
-   is insufficient to reliably register a Service Worker. Restart the browser
-   after installing trust if necessary. Regenerate the certificate if the IP changes.
-
-The script uses `vite --mode mobile --host 0.0.0.0 --port 5174 --strictPort`.
-It fails clearly if certificates are missing. `.cert/` is ignored by Git.
-Optional `DEV_HTTPS_CERT` and `DEV_HTTPS_KEY` in `.env.mobile.local` can select other
-certificate paths; these variables are server-only, never exposed to application code.
-Normal `npm run dev` and production build remain unchanged; actual Service Worker
-registration in a published build also needs trusted HTTPS (or a trustworthy loopback origin).
-
-Axios keeps relative `/api` URLs, and in worker mode MSW registers
-`/mockServiceWorker.js` under the same origin. There is one completion/submission/query flow for desktop and phone.
-Local storage belongs to each origin/browser: HTTP, HTTPS, localhost and the LAN IP
-do **not** share options, results, pending submissions or confirmed records. This is
-a browser-local mock, not a shared network database; desktop records are not copied
-to the phone. Existing HTTP data is not migrated to HTTPS. Test a new match on HTTPS,
-then verify **Registration: Submitted**, Ranking and Match History in that browser.
-
-## Build
+Development defaults to `http://localhost:5173`. No API credentials or external backend are required.
 
 ```bash
 npm run build
-```
-
-Production output goes to `dist/`. Preview it with:
-
-```bash
 npm run preview
 ```
 
-## Scripts
+The build writes `dist/`; preview normally serves `http://localhost:4173`. Preview is a local production-build check, not a deployment service.
 
-| Script          | Description                                  |
-| --------------- | -------------------------------------------- |
-| `npm run dev`   | Start Vite dev server with HMR               |
-| `npm run dev:mobile` | Start trusted HTTPS LAN server on port 5174 |
-| `npm run build` | Type-check then build for production         |
-| `npm run preview` | Preview the production build locally        |
-| `npm run typecheck` | Run TypeScript in noEmit mode             |
-| `npm run lint`  | Run ESLint on `src/`                         |
-| `npm run test`  | Run Playwright E2E tests (starts dev server) |
+### Environment and MSW initialization
 
-Playwright owns a separate Vite server on `127.0.0.1:5175`, with profiling disabled.
-Local regression runs default to two workers (one in CI) to avoid concurrent software-WebGL overload.
-A manual development server on port 5173 can remain open. Do not run profiling and regression tests simultaneously.
+[src/main.tsx](src/main.tsx) awaits `ensureMockWorkerReady()` before mounting React. MSW is intentionally enabled in **development and production**. Axios also verifies interception before requests. The committed [public/mockServiceWorker.js](public/mockServiceWorker.js) is copied to the build; preserve it when publishing.
 
-## High-Level Architecture
+No `.env` is required for normal development/build. Optional settings:
 
-```
-src/
-├─ app/                  # App shell, providers, screen routing
-├─ components/           # Shared presentational components (NavButton, ScreenLayout, GameCanvas)
-├─ screens/              # Page-level React components (MainMenu, Game, Result, Ranking...)
-├─ game/                 # Game logic: NEVER re-rendered by React every frame
-│  ├─ core/              # Game, GameLoop, GameState contracts
-│  ├─ entities/          # Player, Chaser, Shooter, Projectile factories
-│  ├─ systems/           # Movement, Collision, Combat, Spawn processors
-│  ├─ rendering/         # PixiJS renderer adapter
-│  └─ input/             # Keyboard input manager
-├─ api/                  # Axios client + endpoint functions
-├─ hooks/                # TanStack Query hooks (useRanking, useHistory, useSubmitMatch)
-├─ mocks/                # MSW fixtures, handlers, and browser worker
-├─ config/               # Central GameConfig with placeholder tuning values
-└─ types/                # Lightweight domain contracts (Player, Enemy, MatchResult, pagination)
+| Setting | Purpose |
+| --- | --- |
+| `DEV_HTTPS_CERT`, `DEV_HTTPS_KEY` | Server-only certificate paths in `.env.mobile.local`; defaults `.cert/dev.pem` and `.cert/dev-key.pem`. |
+| `VITE_PROFILING=true` | Profiling hooks; supplied by `.env.profiling` for `build:profile`. Keep disabled for normal delivery. |
+
+### Physical-phone development
+
+Connect phone and PC to the same LAN. `npm run dev -- --host 0.0.0.0` supports HTTP LAN testing; MSW 3 uses its Fetch/XHR fallback where Service Workers are unavailable.
+
+For trusted HTTPS and the actual Service Worker, install **mkcert**, replace the sample IP with your PC's IPv4 address, and run in PowerShell:
+
+```powershell
+mkcert -install
+New-Item -ItemType Directory -Force .cert
+mkcert -cert-file .cert/dev.pem -key-file .cert/dev-key.pem localhost 127.0.0.1 ::1 192.168.3.2
+mkcert -CAROOT
+npm run dev:mobile
 ```
 
-### Separation of Concerns
+Trust the CA's public `rootCA.pem` on the phone, then open `https://192.168.3.2:5174`. Never transfer the CA private key. `.cert/` is ignored; missing certificates cause startup to fail clearly. Regenerate certificates when the IP changes. HTTP/HTTPS, localhost/LAN IP and different browsers have **separate local storage**.
 
-- **React UI/Screens** own only menus, HUD overlays, and navigation. They do NOT render the game.
-- **PixiJS (`components/GameCanvas.tsx` + `game/rendering/`)** owns the continuous rendering and canvas; React only mounts/destroys the PixiJS `Application`.
-- **Game Simulation (`game/core/`, `game/systems/`, `game/entities/`)** owns mutable per-frame state and rules. It runs on the fixed-timestep `GameLoop` and is completely decoupled from React.
-- **Input (`game/input/InputManager`)** maps keys to a snapshot consumed by the simulation, not by React directly.
-- **Remote API state** flows through Axios → TanStack Query → React screens. The game simulation itself has no knowledge of network calls; match results are submitted from the UI after the simulation ends.
+## Controls
 
-This separation ensures React does NOT re-render 60 times per second and lets a junior developer implement each system one at a time without touching the other layers.
+| Keyboard | Action |
+| --- | --- |
+| W / ArrowUp | Move forward |
+| A / ArrowLeft | Rotate left |
+| D / ArrowRight | Rotate right |
+| Space | Front cannon: one projectile |
+| Q | Left broadside: three parallel projectiles |
+| E | Right broadside: three parallel projectiles |
 
-### PixiJS Lifecycle (Strict Mode Safe)
+Hold attacks to fire when cooldown allows. Movement and attacks can be combined. Focused buttons/editable controls keep native keyboard behavior; Space and Enter can activate buttons.
 
-`GameCanvas` uses `useRef` for the `Application` and a `cancelled` flag in `useEffect`. During Strict Mode's mount/unmount/remount cycle:
+**Touch:** coarse-pointer devices show a left joystick for desired travel direction. The ship turns progressively through the shortest angle and sails forward with analog intensity, without reversing or snapping. Hold attack buttons with another finger. Portrait and landscape are supported.
 
-1. First effect begins init, cleanup sets `cancelled = true` and destroys any partial app.
-2. Second effect begins init and checks `cancelled` before attaching to DOM.
-3. On real unmount, the app is destroyed with textures.
+Use **Pause → Resume** to continue explicitly. Blur/hidden tab pauses automatically; returning never resumes automatically. Pause freezes simulation time, weapons, enemies, spawning and effects/trails. Resume focuses the arena. Closing in-game Options leaves the match paused. **Quit Match / Main Menu** abandons without registering; **Play Again** creates a fresh match.
 
-### Mocked APIs
+## Game configuration
 
-MSW browser worker starts automatically in development and production. Handlers:
+| Option | Default | Limits / behavior |
+| --- | --- | --- |
+| Game session time | 120 seconds | 60–180 seconds; validate and save with Save. |
+| Enemy spawn time | 3 seconds | 1–15 seconds; validate and save with Save. |
+| Audio | Unmuted | Mute; effects 60%, ambience 25%; changes apply immediately. |
+| Show FPS | Off | Persistent toggle; gameplay display updates approximately once per second. |
 
-- `GET /api/ranking?page&pageSize&configKey` → paginated matches with the same full configuration
-- `GET /api/history?page&pageSize&playerId` → paginated player matches, newest first
-- `POST /api/matches` → persist a completed match; repeat IDs return the existing identical record or conflict with 409
+Spawn bounds allow at most one scheduled attempt per second and at least four scheduled attempts in the shortest match. An attempt may fail if no safe position exists; the interval does not guarantee enemy counts.
 
-The current API is simulated entirely in the browser. Confirmed records and pending
-submissions persist locally; retries keep the original match ID and configuration.
+Main Menu Options shows all settings. Paused-match Options shows only audio and Show FPS. Duration/spawn changes affect **new matches only**: the Game screen reads saved options once and `Game.start()` copies its typed `GameConfig`, including nested tuning. Play Again creates another snapshot. Invalid stored options fall back to defaults. Audio/display preferences are separate from gameplay configuration.
 
-## Demo network scenarios
+## Mock API and network scenarios
 
-MSW runs in development and production. On Main Menu or Match Results, expand
-**Development / demo network scenarios** and select a scenario and target endpoint.
-Normal behavior is **Success**. The selection is stored under
-`pirate-battle:network-scenario:v1`; refresh preserves it and restarts request counters.
-Invalid or unavailable scenario storage falls back to Success.
+Axios calls relative `/api` endpoints; TanStack Query owns lists/cache. This is a **browser-local mock**, not an authenticated shared ranking service.
 
-Available scenarios: Success, Empty lists, Multiple pages, Slow responses,
-Variable latency, Out-of-order responses, Timeout before confirmation,
-Connection error, HTTP 422, HTTP 500, Ranking failure only, History failure only,
-Timeout after confirmation, and API unavailable at match end.
+| Endpoint | Behavior |
+| --- | --- |
+| `POST /api/matches` | Persists confirmed matches before acceptance; same ID/payload is idempotent, conflicting payload returns 409. |
+| `GET /api/ranking` | Pages records matching the entire configuration selected by saved Options. |
+| `GET /api/history` | Pages confirmed records for the local player. |
+| `GET /api/mock-status` | Interception readiness probe. |
 
-- Target limits a scenario to Ranking, Match History, Match submission, or all.
-  Empty lists and Multiple pages affect GETs only. Endpoint-specific failures
-  affect only their named GET. Timeout after confirmation affects POST only.
-- Slow uses 1,500ms. Variable latency repeats 150/700/300/100ms per endpoint.
-  Out-of-order alternates 1,500/100ms, so concurrent requests finish later-first.
-  Selecting a scenario restarts counters. Query keys retain configuration/player/page;
-  TanStack Query cancellation reaches Axios when leaving a screen.
-- Multiple pages adds 15 deterministic response-only matches, never persisted.
-  Ranking fixtures use the requested valid configuration; History fixtures use defaults.
-- Axios times out at 10 seconds; timeout scenarios delay 11 seconds. Before-confirmation
-  timeout never accepts a new POST. After-confirmation timeout saves first, then delays.
-  Choose Success and **Retry registration** to recover the same ID without duplication.
-- For an outage demo, select API unavailable, complete a match, observe its pending status,
-  and start another match or return to Main Menu. Choose Success and retry explicitly.
-- **Reset network demo intentionally deletes all confirmed and pending matches**, restores
-  initial fixtures, Success, counters and registration/query state. Options and the last
-  local result remain. The result then has no confirmed registration in this session.
-  Reset/selection is disabled during submissions. Blocked storage reports incomplete reset;
-  this is not a transactional reset across browser storage keys or tabs.
-- `/api/mock-status` is always healthy: simulated API failures do not disable MSW transport
-  recovery or gameplay. GET retries retain the existing TanStack Query policy; POST retries
-  are explicit. Slow/timeout delays are asynchronous and do not block the main thread.
+Both list screens request 5 items per page. Ranking orders score descending, active duration ascending, completion date ascending, then match ID ascending. History orders newest completion first, then match ID ascending. Ranking is **per match**, not each player's aggregated best score. Other captains are fixtures; custom configurations can exclude all default-config fixtures.
 
-Focused runtime regression suite:
+Completed matches enter pending local storage **before** POST. Only a validated API confirmation marks success and invalidates Ranking/History. Failures retain manual **Retry registration**, including after refresh. Retry after server acceptance recovers the same record without duplication. Last Result is restored separately; its session registration label is not a durable receipt. Refresh neither restores active gameplay nor silently sends pending records.
+
+Expand **Development / demo network scenarios** on Main Menu or Result. Choose a scenario and target (`all`, `ranking`, `history`, `matches`):
+
+- Success, Empty lists, Multiple pages.
+- Slow responses (1.5 s), Variable latency, Out-of-order responses.
+- Timeout before confirmation, Connection error, HTTP 422, HTTP 500.
+- Ranking failure only, History failure only.
+- Timeout after confirmation, API unavailable at match end.
+
+Selection persists; request sequences restart on selection/reload. Axios timeout is 10 seconds; timeout scenarios delay 11 seconds. GET queries retry once; POST never retries automatically. Cached data can remain visible alongside a refetch error.
+
+**Reproduce recovery:** select API unavailable at match end, complete a match, inspect pending status, refresh, select Success and retry. For idempotency, use Timeout after confirmation: retry must recover one record. For delayed pages, select Out-of-order responses and change pages.
+
+**Reset network demo** restores Success/initial fixtures, clears confirmed/pending mock records and relevant query state. It preserves Options and last Result. Selection/reset are disabled during submission; storage failures are reported. Multiple pages adds response-only fixtures.
+
+## Quality and testing
 
 ```bash
-npx playwright test tests/networkScenarios.spec.ts tests/pendingMatches.spec.ts tests/confirmedMatches.spec.ts tests/ranking.spec.ts --workers=1
+npm run typecheck
+npm run lint
+npm run build
+npx playwright install chromium
+npm test
+npx playwright show-report
 ```
 
-Timeout tests shorten only Axios's client timeout to 300ms; the real shared MSW scenario
-still uses 11 seconds. Concurrent ordering tests use the real shared handlers.
+The normal suite owns a development server on `127.0.0.1:5175`, uses Chromium with two local workers (one in CI), and retains failure traces. Browser contexts isolate tests. Deterministic boundary tests control simulation time while exercising real systems/inputs; they are not performance measurements.
 
-## Mobile gameplay controls
+Versioned visual baselines under `tests/*.spec.ts-snapshots/` include desktop, mobile portrait and landscape. Review intended appearance changes before updating them. The latest recorded full run passed **164 tests**, followed by **42 successful stability executions** of previously failing cases; journal stage 47 records that run. Generated HTML/failure traces are ignored by Git and must be delivered separately.
 
-Touch-capable devices (`any-pointer: coarse`) show a virtual joystick and three
-attack buttons. Pointer-only desktop layouts retain keyboard instructions and hide
-these controls; hybrid devices can use both input sources.
-
-- Point the joystick anywhere around 360 degrees to choose a travel heading. The
-  ship takes the shortest gradual turn at its existing configured rotation speed,
-  sailing forward along its current bow while turning. Down means turn toward the
-  bottom and sail there, never reverse. A radial 22% dead zone stops touch movement;
-  joystick magnitude outside it controls a fraction of the configured sailing speed.
-  Alignment tolerance is 0.01 radians to avoid tiny steering corrections.
-- Keyboard W/Up still means full-speed forward; A/Left and D/Right still turn at
-  the configured speed. On hybrid devices, explicit keyboard steering takes priority
-  over touch heading, and W/Up takes priority over touch throttle.
-- Hold **Front shot**, **Left broadside**, or **Right broadside** to fire using the
-  existing weapon cooldowns (Space/Q/E equivalents). Multiple fingers may steer and
-  attack simultaneously. Attack buttons also accept held Space/Enter when focused.
-- Releasing/canceling a pointer clears that source only. Pause, focus loss, hidden
-  tab, orientation/size change and leaving the match discard touch holds. Resume
-  requires fresh input. Keyboard bindings remain W/Up, A/Left, D/Right, Space, Q, E.
-- Portrait and landscape are supported. On coarse-pointer landscape phones up to
-  500px tall, a single compact HUD row reserves about 49px. At widths of 700px or
-  more, a centered three-region grid places the joystick just left of the arena
-  and three vertically stacked attacks just right. The grid is capped by available
-  height so controls stay nearby, without covering the playable canvas. Narrower
-  landscape and portrait layouts place controls below the arena. Canvas scales
-  within its own region, retaining its 960×600 logical world and aspect ratio.
-  Safe areas and dynamic viewport height are respected; gameplay does not scroll.
-  The joystick group is vertically centered on the arena, excluding the HUD.
-- The joystick has only a base ring and movable knob, with **Drag to steer** as
-  its helper. No three-direction arrows are used for the 360-degree control.
-- Round buttons and firing icons come from the official `ui/controls` PNG assets.
-  The joystick uses CSS; it does not replace required gameplay assets.
-
-Focused Chromium touch tests:
+### Production profiling
 
 ```bash
-npx playwright test tests/touchControls.spec.ts --workers=1
-```
-
-Tests use browser touch events with multiple IDs and advance the real simulation
-in fixed steps. Real iOS/Android hardware ergonomics and Safari are still manual
-validation tasks; no orientation lock or full mobile menu redesign is included.
-
-LAN regression tests (plus same-origin API coverage):
-
-```bash
-npx playwright test tests/mobileLan.spec.ts --workers=1
-```
-
-Three tests start a temporary HTTP Vite server on the machine's private LAN IPv4
-address and exercise real insecure-context restrictions, not mocked Service Worker
-support. They skip when no private LAN address is available. Both timer and death
-completion must show Result, submit through MSW's actual fallback and appear in
-Ranking/History after refresh. A separate forced worker-start failure must show
-Result and preserve pending submissions across refresh.
-The localhost test verifies submission, ranking and history request the current origin.
-
-## Fixture semantics
-
-The normal **Success** baseline seeds three sample matches belonging to the current
-mock player (`Captain`) and eight competitor matches with pirate display names.
-Ranking includes compatible fixtures and confirmed matches, filtered by the full
-GameConfig key. With default settings and no confirmed records there are 11 entries;
-custom settings can exclude all default-config fixtures. Match History filters by
-the requested player ID: the UI always requests the local player's history, never
-the competitors' personal histories. It starts with three local sample matches and
-adds that player's confirmed matches regardless of their configuration.
-
-Internal player IDs remain stable in API records but are not shown as display names.
-Ranking displays pirate names and marks the current player **You**. The **Multiple
-pages** scenario adds 15 local-player records to responses only; they are not saved
-as confirmed records and disappear when returning to Success. **Reset network demo**
-restores Success targeting all endpoints and clears confirmed/pending records while
-preserving Options and the last local result. It intentionally keeps the baseline
-fixtures. Separate phone/desktop origins can have different saved options, scenarios
-and confirmed records; those local stores are not synchronized.
-
-Reset also cancels Ranking/History requests, removes their cached pages and resets
-registration status. Merely invalidating inactive queries retains deleted rows until
-a successful refetch; removal ensures the next screen fetches fresh data without
-showing a previously played match, even if that request fails. Reset feedback reports
-incomplete persistence when local data or scenario selection cannot be saved.
-With default 120s/3s settings, clean Success has 11 Ranking entries and 3 local History
-samples. With saved 60s/3s settings, Ranking has no matching baseline fixtures, while
-History still has the 3 samples: **Reset preserves Options**.
-
-
-## Reproducible production profiling
-
-Run separately from other browser tests and heavy background tasks:
-
-```sh
 npm run build:profile
 npm run profile
+npm run build
 ```
 
-This uses optimized Vite output served by `vite preview` on `127.0.0.1:4173`.
-Do not start another server on that port. The separate Playwright configuration runs
-one desktop Chromium worker with real wall time, a 180-second match, and five
-10-second start/play/Quit Match cycles. Gameplay is never accelerated or made invulnerable.
-The pilot follows a water route, aims toward observed enemies with slow forward throttle,
-and supplies normal touch-direction/attack intentions; seed and balance stay unchanged.
-The long run uses the valid 15-second spawn option for reproducible survival; cycles use
-standard 3-second spawning. A death before 180 active seconds fails the long-run test.
-To experiment with the standard workload in PowerShell, set
-`$env:PROFILE_SPAWN_SECONDS = '3'` before `npm run profile`; remove it afterward with
-`Remove-Item Env:PROFILE_SPAWN_SECONDS`. Early death remains an incomplete run.
+Profiling uses a separate configuration, production preview on 4173, a real-time survival attempt and five start/play/exit cycles. The final normal build removes profiling hooks. Default profiling archives prior raw runs and regenerates `PERFORMANCE_REPORT.md`; choose a separate directory to preserve published measurements.
 
-`PERFORMANCE_REPORT.md` and `profiling-results/*.json` contain measurements, hardware,
-browser, build hash, frame intervals, entity history, and cleanup counts. Previous runs
-are archived locally under `profiling-results/attempts/`; HTML/traces are generated
-under `profiling-results/html/` and `profiling-results/traces/`. Setup failures do not
-reuse previous JSON as current measurements. The report is generated even when tests fail.
-Audio buffers and one shared AudioContext intentionally remain cached between screens.
-Heap samples use requested CDP garbage collection and are not GPU/whole-process memory.
+Native-backend verification on Windows, with full Chromium installed:
 
-Profiling hooks are enabled only by `.env.profiling` (`VITE_PROFILING=true`), with bounded
-buffers and no per-frame React updates. For normal delivery, run `npm run build` again;
-the normal build omits the profiling module. `Show FPS` remains available independently.
-Headless desktop results are not physical-mobile or display-presentation measurements.
-To measure visible Chrome locally, use `$env:PROFILE_HEADED = '1'` in PowerShell
-before `npm run profile`. Keep that window focused for the whole run; changing tabs
-correctly auto-pauses the game and invalidates the uninterrupted measurement.
-Inspect the recorded GPU backend: SwiftShader is software rendering, not evidence
-of native GPU performance. Remove the variable afterward with
-`Remove-Item Env:PROFILE_HEADED`.
+```powershell
+node profiling/probe-gpu.mjs
+npm run build:profile
+$env:PROFILE_CHANNEL = 'chromium'
+$env:PROFILE_REQUIRE_GPU = '1'
+$env:PROFILE_EVIDENCE_DIR = 'profiling-results/local-native'
+Remove-Item Env:PROFILE_SPAWN_SECONDS -ErrorAction SilentlyContinue
+Remove-Item Env:PROFILE_ALLOW_EARLY_EXIT -ErrorAction SilentlyContinue
+npm run profile
+npm run build
+```
+
+Required-GPU mode rejects software fallback. Custom output directories receive JSON/HTML without rewriting the main report. Avoid simultaneous profiling/regression runs. See [PERFORMANCE_REPORT.md](PERFORMANCE_REPORT.md) for exact hardware, workload variants, measurements and manual DevTools instructions.
+
+## Project structure
+
+| Path | Responsibility |
+| --- | --- |
+| `src/app`, `src/screens`, `src/components` | React navigation, forms, dialogs, HUD and touch UI. |
+| `src/game` | Core simulation, entity records, systems, input, assets and Pixi rendering. |
+| `src/audio` | Asset manifest, shared Web Audio and UI sound routing. |
+| `src/config`, `src/storage` | Typed configuration, preferences and local persistence. |
+| `src/api`, `src/hooks`, `src/mocks` | Axios contracts, Query hooks and MSW scenarios/fixtures. |
+| `tests`, `profiling`, `profiling-results` | Regression tests, production harness and recorded JSON evidence. |
+| `public/assets` | Supplied Jungle artwork/sounds and supplemental menu artwork. |
+
+Read [ARCHITECTURE.md](ARCHITECTURE.md). [DEV_NOTES_PTBR.md](DEV_NOTES_PTBR.md) is a private chronological study journal with AI attribution; older entries describe their original stage, not the current feature set.
+
+## Known limitations
+
+- No cross-device backend, authentication or live cross-tab synchronization. Persistence depends on browser/origin storage.
+- Enemy AI uses pursuit, coastal collision resolution and a small-island detour, not general pathfinding. Circle colliders approximate land artwork.
+- Rendering uses current positions; the loop's interpolation parameter is unused.
+- Audio needs a trusted user gesture; unavailable audio does not block gameplay.
+- Vite reports a main chunk above 500 kB (approximately 1.05 MB uncompressed): a loading warning, not proof of gameplay frame-rate failure.
+- Native headless AMD/D3D11 **light** 180-second profiling measured approximately 100 FPS/10.60 ms p95. Standard/dense attempts ended by death; neither proves three-minute dense-combat performance. Historical SwiftShader measured 15.68 FPS/66.90 ms. These are environment-specific, not physical-phone or universal benchmarks.
+- Owned-resource cleanup checks passed, but approximately 1 MB post-GC heap growth remains inconclusive without longer retainer analysis.
+- Public deployment and complete source/license documentation for supplied/supplemental assets have not been verified and remain delivery checks.
+
+## Deployment
+
+Publish normal `npm run build` output (`dist/`) on a static host with trusted HTTPS. No real `/api` server is required for this mock challenge. No public deployment URL is currently documented or verified.
+
+Navigation uses React screen state, not path routes; only Result uses `#result`. Serve `index.html` for the root/SPA fallback, serving actual files first. Preserve `/mockServiceWorker.js` as JavaScript with adequate worker scope, `/assets/` and built module paths. Never rewrite the worker request to HTML.
+
+Paths are origin-absolute: **deploy at the domain root**. Subdirectory hosting needs coordinated path/base changes, not only Vite's base. Verify assets, gameplay, Ranking, History, submission/retry and refresh on the published origin. Include generated test reports and profiling evidence; ignored local reports are not present in a clean checkout.

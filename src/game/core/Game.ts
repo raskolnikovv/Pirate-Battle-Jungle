@@ -62,6 +62,10 @@ export class Game {
     this.loop.setFpsObserver(observer);
   }
 
+  setRenderObserver(observer?: (timestamp: number) => void): void {
+    this.loop.setRenderObserver(observer);
+  }
+
   getState(): GameState | null {
     return this.state;
   }
@@ -127,6 +131,7 @@ export class Game {
   }
 
   destroy(): void {
+    this.loop.setRenderObserver(undefined);
     gameAudio.leave(this.state?.status === 'finished');
     this.stop();
     this.renderer.clearCombatEffects();

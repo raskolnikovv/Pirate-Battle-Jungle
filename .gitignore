@@ -17,3 +17,7 @@ test-results
 .env.local
 .env.*.local
 .cert/
+
+profiling-results/html/
+profiling-results/traces/
+profiling-results/attempts/

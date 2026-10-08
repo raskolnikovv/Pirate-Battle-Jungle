@@ -1,0 +1,41 @@
+{
+  "recordedAt": "2026-10-08T14:28:43.705271+00:00",
+  "commands": [
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run lint",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run build:profile",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run profile",
+      "exitCode": 0,
+      "passed": 2,
+      "durationReported": "4.3 minutes"
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0
+    },
+    {
+      "command": "npm test -- --workers=2",
+      "exitCode": 0,
+      "passed": 160,
+      "durationReported": "5.2 minutes"
+    }
+  ],
+  "normalBuildContainsProfilingApi": false,
+  "normalBuildContainsProfilingChunk": false,
+  "warnings": [
+    "Vite chunk above 500 kB (main normal-build chunk 1049.71 kB)",
+    "NO_COLOR ignored because FORCE_COLOR is set"
+  ],
+  "regularSuiteReport": "playwright-report/index.html",
+  "regularSuiteUses": "existing development-server harness; profiling uses production preview separately"
+}

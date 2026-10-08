@@ -292,3 +292,44 @@ incomplete persistence when local data or scenario selection cannot be saved.
 With default 120s/3s settings, clean Success has 11 Ranking entries and 3 local History
 samples. With saved 60s/3s settings, Ranking has no matching baseline fixtures, while
 History still has the 3 samples: **Reset preserves Options**.
+
+
+## Reproducible production profiling
+
+Run separately from other browser tests and heavy background tasks:
+
+```sh
+npm run build:profile
+npm run profile
+```
+
+This uses optimized Vite output served by `vite preview` on `127.0.0.1:4173`.
+Do not start another server on that port. The separate Playwright configuration runs
+one desktop Chromium worker with real wall time, a 180-second match, and five
+10-second start/play/Quit Match cycles. Gameplay is never accelerated or made invulnerable.
+The pilot follows a water route, aims toward observed enemies with slow forward throttle,
+and supplies normal touch-direction/attack intentions; seed and balance stay unchanged.
+The long run uses the valid 15-second spawn option for reproducible survival; cycles use
+standard 3-second spawning. A death before 180 active seconds fails the long-run test.
+To experiment with the standard workload in PowerShell, set
+`$env:PROFILE_SPAWN_SECONDS = '3'` before `npm run profile`; remove it afterward with
+`Remove-Item Env:PROFILE_SPAWN_SECONDS`. Early death remains an incomplete run.
+
+`PERFORMANCE_REPORT.md` and `profiling-results/*.json` contain measurements, hardware,
+browser, build hash, frame intervals, entity history, and cleanup counts. Previous runs
+are archived locally under `profiling-results/attempts/`; HTML/traces are generated
+under `profiling-results/html/` and `profiling-results/traces/`. Setup failures do not
+reuse previous JSON as current measurements. The report is generated even when tests fail.
+Audio buffers and one shared AudioContext intentionally remain cached between screens.
+Heap samples use requested CDP garbage collection and are not GPU/whole-process memory.
+
+Profiling hooks are enabled only by `.env.profiling` (`VITE_PROFILING=true`), with bounded
+buffers and no per-frame React updates. For normal delivery, run `npm run build` again;
+the normal build omits the profiling module. `Show FPS` remains available independently.
+Headless desktop results are not physical-mobile or display-presentation measurements.
+To measure visible Chrome locally, use `$env:PROFILE_HEADED = '1'` in PowerShell
+before `npm run profile`. Keep that window focused for the whole run; changing tabs
+correctly auto-pauses the game and invalidates the uninterrupted measurement.
+Inspect the recorded GPU backend: SwiftShader is software rendering, not evidence
+of native GPU performance. Remove the variable afterward with
+`Remove-Item Env:PROFILE_HEADED`.

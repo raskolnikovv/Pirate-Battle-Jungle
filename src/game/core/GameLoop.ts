@@ -8,6 +8,8 @@ export interface GameLoopCallbacks {
 export class GameLoop {
   private readonly cadence = new FrameCadence();
   private fpsObserver?: (fps: number | null) => void;
+  private renderObserver?: (timestamp: number) => void;
+  setRenderObserver(observer?: (timestamp: number) => void): void { this.renderObserver = observer; }
   private running = false;
   private rafId: number | null = null;
   private lastTime = 0;
@@ -68,6 +70,7 @@ export class GameLoop {
 
     const alpha = this.accumulator / this.fixedTimestep;
     this.callbacks.render(alpha);
+    this.renderObserver?.(performance.now());
     // Observe completed render cadence, never the fixed simulation updates.
     if (this.fpsObserver) {
       const fps = this.cadence.record(performance.now());

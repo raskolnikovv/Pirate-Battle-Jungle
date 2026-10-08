@@ -1860,13 +1860,13 @@ Pausa interrompe as sources de combate e oceano; pode tocar o sinal curto de pau
 
 ### Etapa 42 — Foco imediato na arena após Resume
 
-**Status:** Em andamento — validação focada em execução.
+**Status:** Concluído.
 
 **Responsável pela implementação:** Codex.
 
 **O que foi implementado:** Resume fecha o diálogo nativo antes de retomar; GameCanvas transfere o foco ao canvas com preventScroll. O canvas tem tabindex -1 e nome acessível Game arena, sem entrar na ordem de Tab. Inputs continuam respeitando botões e campos editáveis.
 
-**Arquivos principais envolvidos:** PauseDialog, GameCanvas, gameplayBoundaries.spec.ts e este diário.
+**Arquivos principais envolvidos:** PauseDialog, GameCanvas, index.css, gameplayBoundaries.spec.ts e este diário.
 
 **Como funciona / por que:** close() restaurava o foco no botão Pause; Space e W/A/D então pertenciam ao controle. Agora a restauração nativa termina primeiro, e o foco passa para o contexto de gameplay na mesma ação de Resume. Não há timer ou RAF extra. Back de Options continua pausado; Resume continua explícito, com inputs antigos descartados.
 
@@ -1876,7 +1876,34 @@ Pausa interrompe as sources de combate e oceano; pode tocar o sinal curto de pau
 
 **Pergunta de entrevista:** por que não voltar a capturar teclas de botões? “Isso quebraria a acessibilidade; corrigimos o destino do foco para a arena após retomar.”
 
-**Validação:** typecheck, lint e build passaram; testes focados em execução. Sem alteração de regras, Master Checklist ou commits.
+**Validação:** typecheck, lint e build passaram. Dos 28 testes focados, 27 passaram na execução sequencial; o teste visual landscape restante passou na reexecução após afastar o contorno de foco dos cantos do canvas. Os três testes de Resume (clique, Enter e Space) passaram. Execuções anteriores detectaram diferenças do contorno e um timeout de inicialização sob paralelismo; este não reapareceu na execução sequencial. Nenhuma baseline foi substituída. Avisos: bundle maior que 500 kB, NO_COLOR/FORCE_COLOR e tempos de callbacks do build. Sem alteração de regras ou Master Checklist; nenhum commit criado pelo Codex.
+
+### Etapa 43 — Profiling reproduzível no build otimizado
+
+**Status:** Concluído — medição e procedimento entregues; 60 FPS em GPU nativa permanece não verificado.
+
+**Responsável pela implementação:** Codex.
+
+**O que foi implementado:** modo de build otimizado com observação opcional dos renders concluídos; Playwright separado usa preview de produção, uma partida real de 180 segundos e cinco ciclos de jogar/sair pela UI. Exporta JSON e relatório em inglês. Não altera HP, regras, spawns ou relógio para permitir sobrevivência.
+
+**Arquivos principais envolvidos:** GameCanvas, Game, GameLoop, AudioManager, profileSession, playwright.profile.config.ts, profiling/, package.json, .env.profiling, README e PERFORMANCE_REPORT.md.
+
+**Como funciona / por que:** o observer recebe performance.now depois do render no RAF existente, independente do contador Show FPS. Buffer limita 100.000 intervalos; histórico de entidades limita 1.000 amostras, uma por segundo, com máximos observados a cada render. O piloto envia vetores/ataques pelo mesmo método público do touch; aguarda tempo real. Duração e spawn são salvos pela Options normal. O primeiro piloto com spawn padrão morreu cedo: isso foi registrado como tentativa incompleta. A partida longa usa o intervalo permitido de 15 segundos; os ciclos usam 3 segundos. Essa carga mais leve deve ser explicitada ao interpretar resultados.
+
+**Cleanup e limites:** antes/depois de cada ciclo, CDP coleta heap após GC e indicadores DOM/listeners. Ao sair, a instrumentação confere flags destroyed das instâncias Pixi/texturas e estado liberado, retendo apenas números depois do cleanup síncrono. Um AudioContext e buffers compartilhados são cache intencional. Isso não mede VRAM, heap do worker MSW nem RAM total do browser; aumento pequeno de heap não prova leak. Headless desktop não equivale a telefone físico.
+
+**O que preciso entender:** p95 de intervalo entre renders não é custo de CPU do render; 60 ticks/s não garante 60 FPS. Revisar percentis, média ponderada pelo tempo, limites de buffer, overhead de instrumentação, GC e referências retidas. Este código foi gerado pelo Codex e precisa ser estudado antes da entrevista.
+
+**Como testar manualmente:** npm run build:profile e npm run profile, sem outra suíte/browser pesado em paralelo. Abrir PERFORMANCE_REPORT.md e JSONs; conferir duração ativa, motivo do fim e cinco ciclos. Depois npm run build para voltar ao artefato normal sem hook de profiling. Validar FPS em Chrome visível e telefone físico separadamente.
+
+**Possíveis perguntas de entrevista:**
+- Como comprovou três minutos? “Usei tempo real e a simulação normal; a execução só passa se termina pelo timer com 180 segundos ativos.”
+- Por que guardar uma morte prematura? “É evidência real, mas não atende a duração obrigatória; não pode aparecer como profiling concluído.”
+- Como conclui se há leak? “Comparo recursos efetivamente destruídos, listeners e tendência pós-GC entre ciclos, sem concluir apenas por uma diferença pequena de heap.”
+
+**Medições reais:** partida de 180 segundos ativos e 180,332 segundos reais terminou por tempo, com 30 HP, 11 pontos e 1.685 projéteis criados. Foram 2.825 intervalos, FPS médio 15,68 e p95 66,9 ms. Máximos simultâneos observados: 1 inimigo, 13 projéteis e 17 entidades contando jogador/ilhas. Chromium headless utilizou SwiftShader (renderização por software), portanto a meta de 60 FPS não foi atingida neste ambiente e desempenho em GPU nativa/telefone continua não verificado. Cinco ciclos passaram; flags Pixi/texturas destruídas e estado liberado, 182 listeners DOM estáveis, sem canvas ou vozes restantes. Heap pós-GC cresceu de 7.594.380 para 8.571.880 bytes (+977.500), sem provar ou descartar leak; merece inspeção de retenções/idle mais longa. Contexto e 12 buffers de áudio permanecem intencionalmente compartilhados.
+
+**Validação:** profiling com dois testes aprovados em 4,3 minutos; typecheck, lint e build normal aprovados. Suíte completa: 160 testes aprovados em 5,2 minutos, sem falhas; relatório HTML em playwright-report/index.html. Permanecem avisos de bundle >500 kB e NO_COLOR/FORCE_COLOR. O build normal foi inspecionado e não contém pirateProfile nem chunk profileSession. Tentativas anteriores: startup excedeu a espera inicial, morte aos 52/151 segundos e erro da primeira asserção que media o início do piloto em vez do início da sessão. Essas tentativas não foram tratadas como aprovação; JSONs/traces foram preservados e o procedimento corrigido foi reexecutado integralmente. Master Checklist não alterado; sem commit/push.
 
 ## 5. Conceitos importantes para estudar
 

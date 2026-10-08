@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "lint": "eslint src --ext ts,tsx",
     "typecheck": "tsc -b --noEmit",
-    "test": "playwright test"
+    "test": "playwright test",
+    "build:profile": "tsc -b && vite build --mode profiling",
+    "profile": "node profiling/run.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.104.1",

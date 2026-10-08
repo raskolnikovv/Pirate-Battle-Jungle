@@ -66,8 +66,10 @@ export const GameCanvas = forwardRef<GameCanvasControls, GameCanvasProps>(functi
     let assets: GameAssets | null = null;
     let renderer: GameRenderer | null = null;
     let game: Game | null = null;
+    let releaseProfile: (() => (() => void)) | undefined;
 
     const cleanup = () => {
+      const verifyProfileCleanup = releaseProfile?.(); releaseProfile = undefined;
       game?.setFpsObserver(undefined);
       game?.destroy();
       if (gameRef.current === game) gameRef.current = null;
@@ -85,6 +87,7 @@ export const GameCanvas = forwardRef<GameCanvasControls, GameCanvasProps>(functi
         destroyGameAssets(assets);
         assets = null;
       }
+      verifyProfileCleanup?.();
     };
 
     async function initialize(): Promise<void> {
@@ -133,6 +136,11 @@ export const GameCanvas = forwardRef<GameCanvasControls, GameCanvasProps>(functi
         });
         gameRef.current = game;
         game.setFpsObserver(showFpsRef.current ? setFps : undefined);
+        if (import.meta.env.VITE_PROFILING === 'true') {
+          const { attachProfile } = await import('@/game/profiling/profileSession');
+          if (cancelled) { cleanup(); return; }
+          releaseProfile = attachProfile(game, app, assets, config);
+        }
         game.start(config);
         setStatus('ready');
       } catch (error) {

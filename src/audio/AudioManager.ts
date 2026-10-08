@@ -19,6 +19,12 @@ export class AudioManager {
   private readonly listeners = new Set<() => void>();
   private error = '';
 
+  // Read-only diagnostics; called only by the opt-in profiling collector.
+  getResourceCounts() {
+    return { audioContexts: Number(this.context !== null), audioContextState: this.context?.state ?? null,
+      audioVoices: this.voices.size, oceanVoices: Number(this.ocean !== null), audioBuffers: this.buffers.size };
+  }
+
   getPreferences = () => this.preferences;
   getError = () => this.error;
   subscribe = (listener: () => void) => {

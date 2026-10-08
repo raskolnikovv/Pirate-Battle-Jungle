@@ -1,6 +1,7 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { PirateScreen } from '@/components/PirateScreen';
 import { AudioControls } from '@/components/AudioControls';
+import { DisplayControls } from '@/components/DisplayControls';
 import type { ScreenName } from '@/app/navigationTypes';
 import { ENEMY_SPAWN_INTERVAL_LIMITS, SESSION_DURATION_LIMITS } from '@/config/gameConfig';
 import { loadGameOptions, saveGameOptions, validateGameOptions, type GameOptionsErrors } from '@/config/gameOptions';
@@ -13,7 +14,8 @@ export function Options({ onNavigate }: OptionsProps) {
   return <PirateScreen title="Options"><OptionsForm onBack={() => onNavigate('main-menu')} /></PirateScreen>;
 }
 
-export function OptionsForm({ onBack }: { onBack: () => void }) {
+export function OptionsForm({ onBack, context = 'menu' }: { onBack: () => void; context?: 'menu' | 'match' }) {
+  const showMatchSettings = context === 'menu';
   const [draft, setDraft] = useState(() => {
     const saved = loadGameOptions();
     return { sessionDuration: String(saved.sessionDuration), enemySpawnInterval: String(saved.enemySpawnInterval) };
@@ -26,6 +28,7 @@ export function OptionsForm({ onBack }: { onBack: () => void }) {
 
   const handleSave = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!showMatchSettings) return;
     const options = {
       sessionDuration: draft.sessionDuration.trim() ? Number(draft.sessionDuration) : NaN,
       enemySpawnInterval: draft.enemySpawnInterval.trim() ? Number(draft.enemySpawnInterval) : NaN,
@@ -47,6 +50,7 @@ export function OptionsForm({ onBack }: { onBack: () => void }) {
 
   return (
       <form className="options-form" noValidate onSubmit={handleSave}>
+        {showMatchSettings && <>
         <p>Times are in seconds. Saved settings apply only to new matches.</p>
         <div className="options-field">
           <label htmlFor="session-time">Game session time</label>
@@ -76,11 +80,13 @@ export function OptionsForm({ onBack }: { onBack: () => void }) {
           <p id="spawn-hint">Between {ENEMY_SPAWN_INTERVAL_LIMITS.min} and {ENEMY_SPAWN_INTERVAL_LIMITS.max} seconds. Lower values mean more frequent spawn attempts.</p>
           {errors.enemySpawnInterval && <p id="spawn-error" className="options-error" role="alert">{errors.enemySpawnInterval}</p>}
         </div>
+        </>}
         <AudioControls />
+        <DisplayControls />
         <p role="status" aria-atomic="true">{message}</p>
         {storageError && <p className="options-error" role="alert">{storageError}</p>}
         <div className="options-actions">
-          <button className="menu-button menu-button-primary" type="submit">Save</button>
+          {showMatchSettings && <button className="menu-button menu-button-primary" type="submit">Save</button>}
           <button className="menu-button menu-button-secondary" type="button" onClick={onBack}>Back</button>
         </div>
       </form>

@@ -1,9 +1,13 @@
+import { FrameCadence } from './FrameCadence';
+
 export interface GameLoopCallbacks {
   update: (deltaSeconds: number) => void;
   render: (alpha: number) => void;
 }
 
 export class GameLoop {
+  private readonly cadence = new FrameCadence();
+  private fpsObserver?: (fps: number | null) => void;
   private running = false;
   private rafId: number | null = null;
   private lastTime = 0;
@@ -12,9 +16,19 @@ export class GameLoop {
 
   constructor(private readonly callbacks: GameLoopCallbacks) {}
 
+  setFpsObserver(observer?: (fps: number | null) => void): void {
+    this.fpsObserver = observer;
+    this.cadence.reset();
+    observer?.(null);
+  }
+
+  getFrameTimes(): number[] { return this.cadence.getFrameTimes(); }
+
   start(): void {
     if (this.running) return;
     this.running = true;
+    this.cadence.reset();
+    this.fpsObserver?.(null);
     this.lastTime = performance.now();
     this.accumulator = 0;
     this.scheduleFrame();
@@ -22,6 +36,8 @@ export class GameLoop {
 
   stop(): void {
     this.running = false;
+    this.cadence.reset();
+    this.fpsObserver?.(null);
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
@@ -52,6 +68,11 @@ export class GameLoop {
 
     const alpha = this.accumulator / this.fixedTimestep;
     this.callbacks.render(alpha);
+    // Observe completed render cadence, never the fixed simulation updates.
+    if (this.fpsObserver) {
+      const fps = this.cadence.record(performance.now());
+      if (fps !== null) this.fpsObserver(fps);
+    }
 
     this.scheduleFrame();
   }

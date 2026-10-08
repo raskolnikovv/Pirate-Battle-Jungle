@@ -1,4 +1,6 @@
 import { Application } from 'pixi.js';
+import { useSyncExternalStore } from 'react';
+import { getShowFps, subscribeDisplayPreferences } from '@/config/displayPreferences';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { DEFAULT_GAME_CONFIG, type GameConfig } from '@/config/gameConfig';
 import { destroyGameAssets, loadGameAssets, type GameAssets } from '@/game/assets/gameAssets';
@@ -26,6 +28,10 @@ export interface GameCanvasControls {
 export const GameCanvas = forwardRef<GameCanvasControls, GameCanvasProps>(function GameCanvas(
   { config = DEFAULT_GAME_CONFIG, onHudChange, onMatchComplete }, ref,
 ) {
+  const showFps = useSyncExternalStore(subscribeDisplayPreferences, getShowFps);
+  const [fps, setFps] = useState<number | null>(null);
+  const showFpsRef = useRef(showFps);
+  showFpsRef.current = showFps;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<CanvasStatus>('loading');
   const hudCallbackRef = useRef(onHudChange);
@@ -34,10 +40,18 @@ export const GameCanvas = forwardRef<GameCanvasControls, GameCanvasProps>(functi
 
   useImperativeHandle(ref, () => ({
     pause: () => gameRef.current?.pause(),
-    resume: () => gameRef.current?.resume(),
+    resume: () => {
+      gameRef.current?.resume();
+      containerRef.current?.querySelector('canvas')?.focus({ preventScroll: true });
+    },
     setPointerInput: (pointerId, intentions) => gameRef.current?.setPointerInput(pointerId, intentions),
     releasePointer: (pointerId) => gameRef.current?.releasePointer(pointerId),
   }), []);
+
+  useEffect(() => {
+    gameRef.current?.setFpsObserver(showFps ? setFps : undefined);
+    setFps(null);
+  }, [showFps]);
 
   useEffect(() => {
     hudCallbackRef.current = onHudChange;
@@ -54,6 +68,7 @@ export const GameCanvas = forwardRef<GameCanvasControls, GameCanvasProps>(functi
     let game: Game | null = null;
 
     const cleanup = () => {
+      game?.setFpsObserver(undefined);
       game?.destroy();
       if (gameRef.current === game) gameRef.current = null;
       game = null;
@@ -101,6 +116,8 @@ export const GameCanvas = forwardRef<GameCanvasControls, GameCanvasProps>(functi
           return;
         }
 
+        app.canvas.tabIndex = -1;
+        app.canvas.setAttribute('aria-label', 'Game arena');
         app.canvas.style.width = '100%';
         app.canvas.style.height = '100%';
         app.canvas.style.display = 'block';
@@ -115,6 +132,7 @@ export const GameCanvas = forwardRef<GameCanvasControls, GameCanvasProps>(functi
           if (!cancelled) completionCallbackRef.current?.(result);
         });
         gameRef.current = game;
+        game.setFpsObserver(showFpsRef.current ? setFps : undefined);
         game.start(config);
         setStatus('ready');
       } catch (error) {
@@ -148,6 +166,7 @@ export const GameCanvas = forwardRef<GameCanvasControls, GameCanvasProps>(functi
         background: '#0b536a',
       }}
     >
+      {status === 'ready' && showFps && <span className="fps-counter" aria-live="off">FPS: {fps ?? '--'}</span>}
       {status === 'loading' && (
         <div
           role="status"

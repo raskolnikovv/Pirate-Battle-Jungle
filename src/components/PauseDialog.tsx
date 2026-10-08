@@ -46,10 +46,14 @@ export function PauseDialog({ paused, onResume, onQuit }: PauseDialogProps) {
       }}>
       <div className="menu-panel">
         <h2 id="pause-title" className="pirate-title">{showOptions ? 'Options' : 'Game Paused'}</h2>
-        <p id="pause-description">{showOptions ? 'The current match stays paused. Saved settings apply only to future matches.' : 'The match is frozen. Select Resume when you are ready to continue.'}</p>
-        {showOptions ? <div ref={optionsRef}><OptionsForm onBack={() => setShowOptions(false)} /></div> :
+        <p id="pause-description">{showOptions ? 'The current match stays paused. Audio and display changes apply immediately.' : 'The match is frozen. Select Resume when you are ready to continue.'}</p>
+        {showOptions ? <div ref={optionsRef}><OptionsForm context="match" onBack={() => setShowOptions(false)} /></div> :
           <div className="pause-navigation">
-            <button ref={resumeRef} type="button" className="menu-button menu-button-primary" onClick={onResume}>Resume</button>
+            <button ref={resumeRef} type="button" className="menu-button menu-button-primary" onClick={() => {
+              // Close first: native dialog focus restoration must finish before focusing the arena.
+              dialogRef.current?.close();
+              onResume();
+            }}>Resume</button>
             <button type="button" className="menu-button menu-button-primary" onClick={() => setShowOptions(true)}>Options</button>
             <button type="button" className="menu-button menu-button-secondary" onClick={onQuit}>Main Menu</button>
           </div>}

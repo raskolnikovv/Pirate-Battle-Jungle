@@ -40,11 +40,11 @@ for (const [name, width, height] of [['desktop', 1600, 1100], ['portrait', 390, 
     const frozen = await frozenState(page);
     await page.getByRole('dialog').getByRole('button', { name: 'Options', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: 'Options' });
-    await expect(dialog.getByLabel('Game session time', { exact: true })).toBeFocused();
-    await dialog.getByLabel('Game session time', { exact: true }).fill('60');
-    await dialog.getByLabel('Enemy spawn time', { exact: true }).fill('4');
-    await dialog.getByRole('button', { name: 'Save', exact: true }).click();
-    await expect(dialog.getByRole('status')).toHaveText('Settings saved. They will apply to new matches.');
+    await expect(dialog.getByLabel('Game session time', { exact: true })).toHaveCount(0);
+    await expect(dialog.getByLabel('Enemy spawn time', { exact: true })).toHaveCount(0);
+    await expect(dialog.getByLabel('Sound effects volume')).toBeFocused();
+    await expect(dialog.getByLabel('Show FPS', { exact: true })).not.toBeChecked();
+    await expect(dialog.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
     await page.keyboard.press('Escape');
     await expect(dialog).toBeVisible();
     // Tab remains inside the native modal even while its form is displayed.
@@ -66,6 +66,12 @@ for (const [name, width, height] of [['desktop', 1600, 1100], ['portrait', 390, 
     await expect(page.getByRole('heading', { name: 'Pirate Battle' })).toBeVisible();
     expect(submissions).toBe(0);
     expect(await page.evaluate(() => localStorage.getItem('pirate-battle:pending-matches:v1'))).toBeNull();
+    await page.getByRole('button', { name: 'Options', exact: true }).click();
+    await page.getByLabel('Game session time', { exact: true }).fill('60');
+    await page.getByLabel('Enemy spawn time', { exact: true }).fill('4');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByRole('status')).toHaveText('Settings saved. They will apply to new matches.');
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
     await page.getByRole('button', { name: 'Start Game', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeEnabled();
     const next = await page.evaluate(() => Reflect.get(Reflect.get(window, 'polishGame'), 'configSnapshot'));

@@ -3,7 +3,12 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 async function reachable(page: Page, controls: Locator) {
   for (const control of await controls.all()) {
     await control.scrollIntoViewIfNeeded();
-    const box = (await control.boundingBox())!;
+    // The associated label is the checkbox's full touch target.
+    const box = await control.evaluate(el => {
+      const target = el instanceof HTMLInputElement && el.type === 'checkbox' ? el.closest('label')! : el;
+      const bounds = target.getBoundingClientRect();
+      return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+    });
     const viewport = page.viewportSize()!;
     expect(box.x).toBeGreaterThanOrEqual(-1);
     expect(box.x + box.width).toBeLessThanOrEqual(viewport.width + 1);

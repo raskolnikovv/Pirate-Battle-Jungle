@@ -36,7 +36,7 @@ async function inspect(page: Page) {
   return page.evaluate(() => {
     const state = Reflect.get(window, 'boundaryState');
     const player = state.players.values().next().value;
-    return { health: player.health, x: player.x, rotation: player.rotation, status: state.status,
+    return { health: player.health, x: player.x, y: player.y, rotation: player.rotation, status: state.status,
       elapsed: state.elapsedSeconds, score: state.score, next: state.nextProjectileId,
       nextSpawn: Reflect.get(Reflect.get(window, 'boundaryGame'), 'spawnSystem')?.nextEnemyId,
       projectiles: Array.from(state.projectiles.values(), (p: { id: string; lifetime: number; isPlayerOwned: boolean }) => ({ id: p.id, lifetime: p.lifetime, isPlayerOwned: p.isPlayerOwned })),
@@ -195,3 +195,30 @@ test('real Shooter attacks kill a full-health player, freeze completed state and
   expect(await inspect(page)).toMatchObject({ health: 100, score: 0, elapsed: 0, enemies: [], projectiles: [] });
 });
 
+
+
+for (const activation of ['click', 'Enter', 'Space'] as const) {
+  test(`Resume via ${activation} restores arena focus and accepts immediate movement/fire`, async ({ page }) => {
+    await start(page);
+    await page.getByRole('button', { name: 'Pause', exact: true }).click();
+    const resume = page.getByRole('button', { name: 'Resume', exact: true });
+    await expect(resume).toBeFocused();
+    if (activation === 'click') await resume.click(); else await page.keyboard.press(activation);
+    await expect(page.getByRole('dialog')).not.toBeVisible();
+    await expect(page.locator('canvas')).toBeFocused();
+    await page.evaluate(() => Reflect.get(window, 'boundaryGame').stop());
+    const before = await inspect(page);
+    await page.keyboard.down('w'); await page.keyboard.down('d'); await page.keyboard.down('Space');
+    await advance(page, 1);
+    const after = await inspect(page);
+    expect(after.status).toBe('running');
+    expect(after.y).toBeLessThan(before.y);
+    expect(after.rotation).toBeGreaterThan(before.rotation);
+    expect(after.next).toBe(before.next + 1);
+    await page.keyboard.up('w'); await page.keyboard.up('d'); await page.keyboard.up('Space');
+    // HUD buttons remain keyboard accessible when explicitly focused.
+    await page.getByRole('button', { name: 'Pause', exact: true }).focus();
+    await page.keyboard.press('Space');
+    await expect(page.getByRole('dialog')).toBeVisible();
+  });
+}

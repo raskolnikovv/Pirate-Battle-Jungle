@@ -58,6 +58,10 @@ export class Game {
     });
   }
 
+  setFpsObserver(observer?: (fps: number | null) => void): void {
+    this.loop.setFpsObserver(observer);
+  }
+
   getState(): GameState | null {
     return this.state;
   }

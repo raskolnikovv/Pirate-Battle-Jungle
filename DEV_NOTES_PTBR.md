@@ -4,6 +4,8 @@
 
 ## 1. Visão geral do projeto
 
+**Atualização da etapa 41:** Options no menu mantém duração/spawn; durante a pausa apresenta apenas áudio e Show FPS. FPS é uma preferência visual persistida, desligada por padrão, medida pelo render e publicada aproximadamente uma vez por segundo. Não substitui o profiling obrigatório.
+
 **Atualização da etapa 40:** controles interativos e campos editáveis mantêm suas teclas nativas durante gameplay. Novos testes verificam fronteiras de spawn/cooldown, remoção de balas, dano de broadside, morte por tiros reais e proteção de History contra resposta antiga.
 
 **Atualização da etapa 39:** áudio oficial integrado aos eventos reais do jogo, com canhões, impactos, explosões, início/término, pausa/retomada e oceano. Options tem mute e volumes separados persistidos. Áudio não altera GameConfig, estado contínuo React, regras ou registro de partidas.
@@ -1829,6 +1831,52 @@ Pausa interrompe as sources de combate e oceano; pode tocar o sinal curto de pau
 - Por que cancelar a consulta antiga? “Ela pertence a uma tela desmontada e não deve substituir os dados da nova consulta.”
 
 **Validação:** `npm run typecheck`, `npm run lint` e `npm run build` passaram. `npm run test -- --workers=2`: 151 testes aprovados em 4,6 min, incluindo 14 novos; relatório HTML atualizado. A primeira suíte completa teve 147 aprovados e quatro falhas em trails: três por foco no botão Pause após retomada interna e uma durante inicialização. Ajustamos o fluxo real e aguardamos readiness; os seis testes de trails e a suíte completa passaram. Traces da primeira falha foram confirmados durante a investigação. Permanecem avisos de chunk acima de 500 kB e NO_COLOR/FORCE_COLOR; o log de asset ausente é provocado pelo teste de falha. Sem alteração de regras, balanceamento, contratos, Master Checklist, baselines ou commits.
+
+### Etapa 41 — Options contextual e FPS opcional
+
+**Status:** Concluído.
+
+**Responsável pela implementação:** Codex.
+
+**O que foi implementado:** o mesmo OptionsForm recebe contexto menu/match. Na pausa, oculta duração/spawn e Save; áudio e Display salvam automaticamente, com erro acessível quando storage falha. Back retorna ao diálogo pausado e exige Resume. No menu, validação e Save das configurações da próxima partida permanecem iguais.
+
+**Arquivos principais envolvidos:** Options, PauseDialog, DisplayControls, displayPreferences, GameCanvas, Game, GameLoop, FrameCadence, index.css, testes optionsFps/visualPolish/pirateScreens e três baselines de Options.
+
+**Como funciona:** preferência versionada `pirate-battle:display:v1` usa boolean validado e fallback false. Assinaturas via useSyncExternalStore atualizam a interface apenas ao mudar a preferência. GameLoop observa performance.now após renderizar no RAF já existente; FrameCadence calcula FPS por número de intervalos/tempo real e envia valor aproximadamente uma vez por segundo. React não recebe updates a cada frame. O contador fica no canto superior esquerdo da arena, sem pointer events/live announcements. Pausa limpa a janela e exibe --; Resume começa uma janela nova. Desabilitar ou desmontar remove o observer e limpa as amostras, sem criar RAF/timer/listener adicional.
+
+**Por que foi feito dessa forma:** configurações de partida não mudam o snapshot já iniciado, então ficam disponíveis somente no menu. FPS é preferência de apresentação, separada de GameConfig e dos parâmetros comparados no ranking. Medimos renderização porque fixed timestep não representa a taxa de quadros mostrados. Um Float64Array circular limita o histórico a 600 intervalos sem alocar um array por frame; getFrameTimes retorna cópia cronológica para futura coleta.
+
+**O que eu preciso entender:** FPS versus frequência da simulação, intervalo entre renders versus tempo de execução do render, performance.now, ring buffer, assinatura/cleanup e persistência com dados unknown. O contador não mede apresentação física/GPU e não produz p95, entidades, memória nem evidência de 180 segundos. Futuro profiling precisa coletar/exportar medidas antes do reset e documentar ambiente/build. Revisar o código gerado pelo Codex antes da entrevista.
+
+**Como testar manualmente:** no menu, abrir Options e conferir os quatro grupos de ajustes; ativar Show FPS, recarregar e iniciar partida. Observar contador discreto atualizado aproximadamente a cada segundo. Pausar, abrir Options, confirmar ausência de duração/spawn, ajustar áudio/FPS e voltar: deve continuar pausado. Usar Resume explicitamente. Desativar FPS, navegar e reiniciar; conferir desktop e telefone em portrait/landscape, inclusive scroll do modal e foco visível.
+
+**Possíveis perguntas de entrevista:**
+- Por que não calcular FPS pelos updates? “A simulação roda em passos fixos; a tela pode renderizar a 30, 60 ou outra frequência.”
+- O contador causa render React por frame? “Não: acumulamos medidas no loop e só publicamos aproximadamente a cada segundo.”
+- Por que ocultar duração na pausa? “A partida tem snapshot fixo. Áudio e FPS são preferências visuais imediatas.”
+- Isso conclui o profiling? “Não. Ainda precisamos medir três minutos no build otimizado e cinco ciclos com análise de memória.”
+
+**Validação:** typecheck, lint e build passaram. Suíte completa Chromium: 157 testes aprovados em 5,1 min, sem falhas, incluindo seis novos. Testes cobrem os dois contextos, áudio, persistência/fallback/erro de storage, geometria sem overlap/overflow em desktop e mobile, pausa/cleanup, buffer limitado e simulação idêntica com FPS ligado/desligado. As três baselines de Options foram conferidas visualmente; outros screenshots permanecem iguais. Permanece aviso de bundle principal acima de 500 kB (1.049,12 kB) e NO_COLOR/FORCE_COLOR no runner. Não foi feito profiling real de 180 segundos nem teste físico nesta tarefa. Sem alteração de regras, balanceamento, contratos, Master Checklist ou commits.
+
+### Etapa 42 — Foco imediato na arena após Resume
+
+**Status:** Em andamento — validação focada em execução.
+
+**Responsável pela implementação:** Codex.
+
+**O que foi implementado:** Resume fecha o diálogo nativo antes de retomar; GameCanvas transfere o foco ao canvas com preventScroll. O canvas tem tabindex -1 e nome acessível Game arena, sem entrar na ordem de Tab. Inputs continuam respeitando botões e campos editáveis.
+
+**Arquivos principais envolvidos:** PauseDialog, GameCanvas, gameplayBoundaries.spec.ts e este diário.
+
+**Como funciona / por que:** close() restaurava o foco no botão Pause; Space e W/A/D então pertenciam ao controle. Agora a restauração nativa termina primeiro, e o foco passa para o contexto de gameplay na mesma ação de Resume. Não há timer ou RAF extra. Back de Options continua pausado; Resume continua explícito, com inputs antigos descartados.
+
+**O que preciso entender:** diferença entre fechar diálogo, retomar simulação e escolher o destino do foco. Revisar ordem de eventos e foco programático implementados pelo Codex.
+
+**Como testar manualmente:** pausar e usar Resume por clique, Enter ou Space. Pressionar imediatamente W/A/D e disparar, sem clicar na tela. Focar Pause com Tab e confirmar que Space ainda abre a pausa.
+
+**Pergunta de entrevista:** por que não voltar a capturar teclas de botões? “Isso quebraria a acessibilidade; corrigimos o destino do foco para a arena após retomar.”
+
+**Validação:** typecheck, lint e build passaram; testes focados em execução. Sem alteração de regras, Master Checklist ou commits.
 
 ## 5. Conceitos importantes para estudar
 

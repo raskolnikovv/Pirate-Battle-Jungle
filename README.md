@@ -2,6 +2,12 @@
 
 Single-player, top-down naval shooter built for the Jungle Gaming Junior React challenge. Sail around islands, fight Chasers and Shooters, and earn **1 point per enemy destroyed by player attacks**. Chaser contact/self-destruction awards **0 points**. Matches end when time expires or the player's HP reaches zero.
 
+## Live demo
+
+[Play Pirate Battle on Netlify](https://pirate-battle-jungle.netlify.app/)
+
+The published demo uses a browser-local MSW API. Ranking and match history are stored per browser and origin; they are not shared across devices.
+
 ## Implemented features
 
 - Fixed 960×600 arena with coastal cover and an isolated island that block ships and shots.
@@ -135,7 +141,7 @@ npx playwright show-report
 
 The normal suite owns a development server on `127.0.0.1:5175`, uses Chromium with two local workers (one in CI), and retains failure traces. Browser contexts isolate tests. Deterministic boundary tests control simulation time while exercising real systems/inputs; they are not performance measurements.
 
-Versioned visual baselines under `tests/*.spec.ts-snapshots/` include desktop, mobile portrait and landscape. Review intended appearance changes before updating them. The latest recorded full run passed **164 tests**, followed by **42 successful stability executions** of previously failing cases. These are recorded results from the preceding regression validation, not a new run for this documentation change. Generated HTML/failure traces are ignored by Git and must be delivered separately.
+Versioned visual baselines under `tests/*.spec.ts-snapshots/` include desktop, mobile portrait and landscape. Review intended appearance changes before updating them. The latest recorded full run passed **174 tests with one worker**. Parallel local runs encountered intermittent development-server loading timeouts. These are recorded validation results, not a new run for this documentation change. Generated HTML/failure traces are ignored by Git and must be delivered separately.
 
 ### Production profiling
 
@@ -190,11 +196,11 @@ Development proceeded in incremental milestones. The project owner provided step
 - Vite reports a main chunk above 500 kB (approximately 1.05 MB uncompressed): a loading warning, not proof of gameplay frame-rate failure.
 - Native headless AMD/D3D11 **light** 180-second profiling measured approximately 100 FPS/10.60 ms p95. Standard/dense attempts ended by death; neither proves three-minute dense-combat performance. Historical SwiftShader measured 15.68 FPS/66.90 ms. These are environment-specific, not physical-phone or universal benchmarks.
 - Owned-resource cleanup checks passed, but approximately 1 MB post-GC heap growth remains inconclusive without longer retainer analysis.
-- Public deployment and complete source/license documentation for supplied/supplemental assets have not been verified and remain delivery checks.
+- Complete source/license documentation for supplied/supplemental assets remains a delivery check. The published Netlify demo was manually tested by the project owner; an independent remote browser audit has not been recorded.
 
 ## Deployment
 
-Publish normal `npm run build` output (`dist/`) on a static host with trusted HTTPS. No real `/api` server is required for this mock challenge. No public deployment URL is currently documented or verified.
+Publish normal `npm run build` output (`dist/`) on a static host with trusted HTTPS. No real `/api` server is required for this mock challenge. The published demo is available at [pirate-battle-jungle.netlify.app](https://pirate-battle-jungle.netlify.app/). The project owner reported successful manual testing on the published site.
 
 Navigation uses React screen state, not path routes; only Result uses `#result`. Serve `index.html` for the root/SPA fallback, serving actual files first. Preserve `/mockServiceWorker.js` as JavaScript with adequate worker scope, `/assets/` and built module paths. Never rewrite the worker request to HTML.
 

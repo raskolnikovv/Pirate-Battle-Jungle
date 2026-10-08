@@ -4,6 +4,8 @@
 
 ## 1. Visão geral do projeto
 
+**Atualização da etapa 40:** controles interativos e campos editáveis mantêm suas teclas nativas durante gameplay. Novos testes verificam fronteiras de spawn/cooldown, remoção de balas, dano de broadside, morte por tiros reais e proteção de History contra resposta antiga.
+
 **Atualização da etapa 39:** áudio oficial integrado aos eventos reais do jogo, com canhões, impactos, explosões, início/término, pausa/retomada e oceano. Options tem mute e volumes separados persistidos. Áudio não altera GameConfig, estado contínuo React, regras ou registro de partidas.
 
 **Atualização da etapa 38:** penínsulas maiores e uma ilha pequena no quadrante superior direito oferecem cobertura real contra projéteis. Desvio local de inimigos foi autorizado após reproduzir o bloqueio da perseguição direta. Velocidades, armas e controles mantêm os valores anteriores.
@@ -1802,6 +1804,31 @@ Pausa interrompe as sources de combate e oceano; pode tocar o sinal curto de pau
 **Verificação e limites:** sete testes de áudio cobrem persistência, storage inválido/indisponível, gesto rejeitado e nova tentativa, limite de voices, reutilização, pausa, término/restart/cleanup, eventos reais de teclado, explosões sem duplicação e WAV ausente. Chromium real decodifica os 12 arquivos. Capturas de Options desktop/retrato/paisagem foram inspecionadas antes de atualizar baselines; cinco tamanhos mantêm controles alcançáveis por rolagem. Sons indisponíveis não são retentados automaticamente nesta sessão; refresh permite nova carga. Não há mix espacial, compressor, música ou pausa no ponto exato do loop. Typecheck, lint e build passaram; permanece o aviso de bundle acima de 500 kB.
 
 **Resultado final da etapa 39:** typecheck, lint e build aprovados; suíte completa com **137 testes aprovados em Chromium (3,0 minutos)**. A primeira execução teve seis timeouts de navegação inicial em `page.goto`, antes de ações de áudio; não se repetiram na segunda execução completa. A causa desses timeouts não foi confirmada, portanto não foram ocultados com retries ou aumento de timeout. Avisos existentes: bundle principal minificado de aproximadamente 1.045,59 kB (>500 kB) e NO_COLOR/FORCE_COLOR. Nenhum commit, push ou alteração do Master Checklist. Inspeção auditiva em telefone/Safari e avaliação de memória/FPS continuam manuais.
+
+### Etapa 40 — Teclado acessível e fronteiras de gameplay/rede
+
+**Status:** Concluído.
+
+**Responsável pela implementação:** Codex.
+
+**O que foi implementado:** InputManager ignora teclas originadas em botões, links, formulários, conteúdo editável e controles ARIA. Ao focar um controle, limpa teclas pressionadas; keyup sempre libera a tecla, sem impedir comportamento nativo de controles. Touch permanece independente. Playwright agora retém trace da primeira falha, mesmo sem retry local.
+
+**Arquivos principais envolvidos:** `src/game/input/InputManager.ts`, `playwright.config.ts`, `tests/gameplayBoundaries.spec.ts`, `tests/networkScenarios.spec.ts`, `tests/projectileTrails.spec.ts`, este diário.
+
+**Como funciona:** testes com RAF suspenso avançam Game.update em passos de 1/60 s. Teclas reais acionam armas; colisão real aplica os três hits do broadside. Um Shooter elimina um jogador com HP inicial completo sem alterar HP diretamente. Spawn usa seed e configuração explícitas; contamos criações porque Chasers podem se autodestruir antes do próximo intervalo. History recebe dados reais MSW: uma barreira no adapter adia a primeira resposta, a navegação inicia consulta nova e o signal cancela a antiga; liberamos a barreira e verificamos cancelamento, dados e paginação.
+
+**Por que foi feito dessa forma:** preventDefault global bloqueava Space de Pause/Quit. composedPath e closest também cobrem conteúdo dentro do botão. Limpar teclas no foco evita movimento preso. O servidor Playwright agora especifica 127.0.0.1 e porta estrita: reproduzimos Vite ouvindo só em ::1 enquanto o runner esperava IPv4. Não aumentamos timeouts globais nem adicionamos sleeps. O teste de trails usa Resume real e devolve o foco ao canvas antes de Space: antes, a retomada interna deixava Pause focado. Também aguarda o canvas pronto pelo timeout padrão de ações, em vez de confundir Loading com gameplay disponível após apenas o prazo de assertion. Se a janela estava sem foco ao concluir o loading, retoma explicitamente pela UI.
+
+**O que eu preciso entender:** propagação de eventos, defaultPrevented, focusin, autorepeat, cancelamento Axios/TanStack Query, controle de tempo sem substituir regras, diferença entre entidade criada e sobrevivente. Instrumentação e regressões foram implementadas pelo Codex; revisar antes de explicar na entrevista.
+
+**Como testar manualmente:** iniciar partida, focar Pause com Tab e pressionar Space; Resume com Enter; focar Quit Match e usar Space. Em Options, digitar valores, ajustar sliders e salvar pelo teclado. Voltar ao combate e verificar W/A/D, Space/Q/E simultâneos. Conferir History após navegar para fora e retornar durante loading. Execute `npm run test -- --workers=2`; falhas ficam com trace em test-results.
+
+**Possíveis perguntas de entrevista:**
+- Por que não capturar Space em qualquer lugar? “A tecla também ativa botões. O input respeita o elemento que recebeu o evento.”
+- Como testar cooldown sem esperar tempo real? “Avanço passos fixos da simulação e verifico disparos antes e no limite, usando inputs reais.”
+- Por que cancelar a consulta antiga? “Ela pertence a uma tela desmontada e não deve substituir os dados da nova consulta.”
+
+**Validação:** `npm run typecheck`, `npm run lint` e `npm run build` passaram. `npm run test -- --workers=2`: 151 testes aprovados em 4,6 min, incluindo 14 novos; relatório HTML atualizado. A primeira suíte completa teve 147 aprovados e quatro falhas em trails: três por foco no botão Pause após retomada interna e uma durante inicialização. Ajustamos o fluxo real e aguardamos readiness; os seis testes de trails e a suíte completa passaram. Traces da primeira falha foram confirmados durante a investigação. Permanecem avisos de chunk acima de 500 kB e NO_COLOR/FORCE_COLOR; o log de asset ausente é provocado pelo teste de falha. Sem alteração de regras, balanceamento, contratos, Master Checklist, baselines ou commits.
 
 ## 5. Conceitos importantes para estudar
 

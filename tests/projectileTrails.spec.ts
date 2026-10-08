@@ -11,8 +11,19 @@ async function start(page: Page) {
       Object.assign(window, { trailGame: this });
     };
   });
+  await page.bringToFront();
   await page.getByRole('button', { name: 'Start Game', exact: true }).click();
+  await page.locator('canvas').waitFor({ state: 'visible' });
+  await page.bringToFront();
+  // Asset initialization can finish while the parallel browser window is unfocused.
+  // Respect automatic pause and resume through the UI rather than overriding hasFocus.
+  if (await page.evaluate(() => Reflect.get(window, 'trailGame').getState().status === 'paused')) {
+    await page.getByRole('button', { name: 'Resume', exact: true }).click();
+    await expect(page.getByRole('dialog')).not.toBeVisible();
+    await page.evaluate(() => Reflect.get(window, 'trailGame').stop());
+  }
   await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeEnabled();
+  await page.locator('canvas').click();
 }
 
 async function advance(page: Page, steps: number) {
@@ -61,12 +72,16 @@ for (const [name, width, height] of [['desktop', 1280, 900], ['portrait', 390, 8
       const paused = await inspect(page);
       await advance(page, 120);
       expect(await inspect(page)).toEqual(paused);
+      await page.getByRole('button', { name: 'Resume', exact: true }).click();
+      await expect(page.getByRole('dialog')).not.toBeVisible();
       await page.evaluate(() => {
-        const game = Reflect.get(window, 'trailGame'); game.resume(); game.stop();
+        const game = Reflect.get(window, 'trailGame'); game.stop();
         game.getState().enemies.clear();
       });
       await advance(page, 240); // All shots hit, expire or leave the arena; residual trails expire too.
       expect(await inspect(page)).toEqual([]);
+      // Resume restores focus to Pause: return focus to the playfield before gameplay keys.
+      await page.locator('canvas').click();
       await page.keyboard.down('Space'); await advance(page, 2); await page.keyboard.up('Space');
       expect((await inspect(page)).length).toBeGreaterThan(0);
       await page.evaluate(() => {

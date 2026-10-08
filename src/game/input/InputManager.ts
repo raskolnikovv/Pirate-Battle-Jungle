@@ -27,13 +27,22 @@ const KEY_ACTIONS: Record<string, InputAction> = {
   d: 'turnRight', arrowright: 'turnRight', ' ': 'fireFront', q: 'fireLeft', e: 'fireRight',
 };
 
+// Native controls and editable content keep their own keyboard behavior.
+function isInteractive(target: EventTarget | null): boolean {
+  return target instanceof Element && !!target.closest(
+    'button, a[href], input, select, textarea, summary, [contenteditable]:not([contenteditable="false"]), '
+    + '[role="button"], [role="link"], [role="textbox"], [role="slider"], [role="combobox"], '
+    + '[role="checkbox"], [role="radio"], [role="switch"], [role="spinbutton"], [role="menuitem"], [role="listbox"]',
+  );
+}
+
 export class InputManager {
   private readonly keys = new Set<string>();
   private readonly pointers = new Map<number, Partial<InputSnapshot>>();
   private target: Window | null = null;
 
   private readonly boundKeyDown = (event: KeyboardEvent) => {
-    if (event.defaultPrevented) return;
+    if (event.defaultPrevented || event.composedPath().some(isInteractive)) return;
     // Held keys from before/during pause must require a fresh press after resume.
     if (event.repeat) {
       if (GAMEPLAY_KEYS.includes(event.key.toLowerCase())) event.preventDefault();
@@ -43,7 +52,13 @@ export class InputManager {
   };
 
   private readonly boundKeyUp = (event: KeyboardEvent) => {
-    this.applyKey(event, false);
+    // Always release a held key, even if focus moved to a control before keyup.
+    this.keys.delete(event.key.toLowerCase());
+    if (!event.composedPath().some(isInteractive)) this.applyKey(event, false);
+  };
+
+  private readonly boundFocusIn = (event: FocusEvent) => {
+    if (isInteractive(event.target)) this.keys.clear();
   };
 
   private readonly boundBlur = () => {
@@ -58,6 +73,7 @@ export class InputManager {
     target.addEventListener('keydown', this.boundKeyDown);
     target.addEventListener('keyup', this.boundKeyUp);
     target.addEventListener('blur', this.boundBlur);
+    target.addEventListener('focusin', this.boundFocusIn);
   }
 
   detach(): void {
@@ -65,6 +81,7 @@ export class InputManager {
       this.target.removeEventListener('keydown', this.boundKeyDown);
       this.target.removeEventListener('keyup', this.boundKeyUp);
       this.target.removeEventListener('blur', this.boundBlur);
+      this.target.removeEventListener('focusin', this.boundFocusIn);
       this.target = null;
     }
 

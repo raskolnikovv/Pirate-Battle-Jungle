@@ -224,3 +224,51 @@ test('multiple-page ranking respects custom saved configuration', async ({ page 
   await page.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(page.getByText('Page 2 of 3 · 15 results · 5 per page')).toBeVisible();
 });
+
+
+test('delayed History response cannot replace a newer query after leaving and reopening', async ({ page }) => {
+  await open(page);
+  await page.evaluate(async () => {
+    const resources = performance.getEntriesByType('resource');
+    const { httpClient } = await import(resources.find(e => e.name.includes('/src/api/client.ts'))!.name);
+    const { getAdapter } = await import(resources.find(e => e.name.includes('/axios.js'))!.name);
+    const adapter = getAdapter(httpClient.defaults.adapter);
+    httpClient.interceptors.response.use(undefined, (error: { code?: string; config?: { url?: string } }) => {
+      if (error.code === 'ERR_CANCELED' && error.config?.url === '/history') Reflect.set(window, 'historyCanceled', true);
+      return Promise.reject(error);
+    });
+    let release: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let first = true;
+    // Let MSW produce the real first response, then hold its delivery to Axios.
+    httpClient.defaults.adapter = async (config: { url?: string }) => {
+      const hold = first && config.url === '/history';
+      if (hold) first = false;
+      const response = await adapter(config);
+      if (hold) {
+        Reflect.set(window, 'historyHeld', true);
+        await gate;
+        Reflect.set(window, 'historyReleased', true);
+      }
+      return response;
+    };
+    Object.assign(window, { releaseHistory: () => release() });
+  });
+  await page.getByRole('button', { name: 'Match History', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => Reflect.get(window, 'historyHeld'))).toBe(true);
+  await expect(page.getByText('Loading history...')).toBeVisible();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByText('Development / demo network scenarios', { exact: true }).click();
+  await select(page, 'multiple_pages', 'history');
+  await page.getByRole('button', { name: 'Match History', exact: true }).click();
+  await expect(page.getByText(/Page 1 of 4.*18 results.*5 per page/)).toBeVisible();
+  const newer = await page.locator('tbody').innerText();
+  await page.evaluate(() => Reflect.get(window, 'releaseHistory')());
+  await expect.poll(() => page.evaluate(() => Reflect.get(window, 'historyReleased'))).toBe(true);
+  await expect.poll(() => page.evaluate(() => Reflect.get(window, 'historyCanceled'))).toBe(true);
+  await expect(page.getByText(/Page 1 of 4.*18 results.*5 per page/)).toBeVisible();
+  await expect.poll(() => page.locator('tbody').innerText()).toBe(newer);
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.getByText(/Page 2 of 4.*18 results.*5 per page/)).toBeVisible();
+  await expect(page.locator('tbody')).not.toHaveText(newer);
+});
